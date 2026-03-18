@@ -10,7 +10,7 @@ import {
   type ModelRegistry,
 } from "@mariozechner/pi-coding-agent";
 import { ModelRegistry as PiModelRegistry } from "@mariozechner/pi-coding-agent";
-import type { ImageContent } from "@mariozechner/pi-ai";
+import type { ImageContent, AssistantMessage } from "@mariozechner/pi-ai";
 import type { AppConfig } from "./config.js";
 import type { Logger } from "./logger.js";
 import { buildStreamingPreview, splitDiscordMessage } from "./text.js";
@@ -364,6 +364,16 @@ class PiConversationWorker implements ConversationRuntime {
       case "agent_end":
         if (this.activeJob) {
           this.closeToolBlock();
+          // Surface error messages from the SDK that would otherwise be silently swallowed.
+          // When the API call fails, the SDK emits agent_end with an assistant message
+          // containing stopReason "error" and an errorMessage, but doesn't throw from prompt().
+          const messages = "messages" in event ? (event.messages as unknown[]) : undefined;
+          if (messages) {
+            const errorMessage = extractAgentEndError(messages);
+            if (errorMessage && !this.activeJob.accumulatedText.trim()) {
+              this.activeJob.accumulatedText = `⚠️ ${errorMessage}`;
+            }
+          }
         }
         await this.finalizeActiveJob();
         return;
@@ -538,6 +548,22 @@ async function countFilesByExtension(dirPath: string, extension: string): Promis
   }
 
   return total;
+}
+
+/**
+ * Extract an error message from the agent_end event's messages array.
+ * When the SDK catches an API error, it emits agent_end with an assistant message
+ * that has stopReason "error" and an errorMessage — but prompt() doesn't throw,
+ * so without this check the error is silently swallowed.
+ */
+function extractAgentEndError(messages: unknown[]): string | undefined {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i] as Partial<AssistantMessage>;
+    if (msg?.role === "assistant" && msg.stopReason === "error" && msg.errorMessage) {
+      return msg.errorMessage;
+    }
+  }
+  return undefined;
 }
 
 function formatErrorMessage(error: unknown): string {
