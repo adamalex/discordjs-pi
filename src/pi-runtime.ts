@@ -329,10 +329,10 @@ class PiConversationWorker implements ConversationRuntime {
           // Close any open tool block before new assistant text starts.
           this.closeToolBlock();
           // When a new assistant message starts and we already have accumulated text
-          // (i.e., after tool calls), insert a paragraph break so the text blocks
-          // don't get smashed together in the final Discord message.
+          // (i.e., after tool calls), insert a line break. Discord already renders
+          // visual spacing after code blocks, so a single newline is sufficient.
           if (this.activeJob.accumulatedText.length > 0) {
-            this.activeJob.accumulatedText = this.activeJob.accumulatedText.trimEnd() + "\n\n";
+            this.activeJob.accumulatedText = this.activeJob.accumulatedText.trimEnd() + "\n";
           }
         }
         return;

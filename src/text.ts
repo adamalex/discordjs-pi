@@ -6,11 +6,25 @@ export function buildStreamingPreview(text: string): string {
     return "_Thinking..._";
   }
 
-  if (trimmed.length <= DISCORD_MESSAGE_LIMIT) {
-    return trimmed;
+  let preview =
+    trimmed.length <= DISCORD_MESSAGE_LIMIT
+      ? trimmed
+      : `...${trimmed.slice(-(DISCORD_MESSAGE_LIMIT - 3))}`;
+
+  // If there's an unclosed code fence, append a closing one so Discord
+  // renders the block properly during streaming.
+  if (hasUnclosedCodeFence(preview)) {
+    preview += "\n```";
   }
 
-  return `...${trimmed.slice(-(DISCORD_MESSAGE_LIMIT - 3))}`;
+  return preview;
+}
+
+function hasUnclosedCodeFence(text: string): boolean {
+  // Count lines that start with ``` (opening or closing fences).
+  // An odd count means there's an unclosed fence.
+  const fenceCount = (text.match(/^```/gm) || []).length;
+  return fenceCount % 2 === 1;
 }
 
 export function splitDiscordMessage(text: string): string[] {
