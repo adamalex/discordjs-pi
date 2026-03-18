@@ -549,7 +549,7 @@ function formatToolStartLine(toolName: string, args: Record<string, unknown> | u
       break;
   }
 
-  return detail ? `⚙️ \`${toolName}\` ${detail}` : `⚙️ \`${toolName}\``;
+  return detail ? `⚙️ \`${toolName}\` \`${detail}\`` : `⚙️ \`${toolName}\``;
 }
 
 function truncateToolDetail(text: string): string {
