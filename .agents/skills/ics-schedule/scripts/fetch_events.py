@@ -16,6 +16,7 @@ Options:
     --gender GENDER     boys, girls, coed, or all (default: all)
     --config PATH       Path to config.json
     --limit N           Max events to show (default: 50)
+    --format FORMAT     text or json (default: text)
 """
 
 import argparse
@@ -32,6 +33,14 @@ try:
 except ImportError:
     # Python 3.8 fallback
     from backports.zoneinfo import ZoneInfo
+
+
+LEVEL_LABELS = {
+    "varsity": "Varsity",
+    "jv": "JV",
+    "ms": "MS",
+    "freshman": "Freshman",
+}
 
 
 def parse_ics(text: str) -> List[Dict[str, str]]:
@@ -195,8 +204,89 @@ def fuzzy_match(query: str, target: str) -> bool:
     return q in t or t in q
 
 
+def format_time(dt: Optional[datetime]) -> str:
+    """Format a single event time for display."""
+    if not dt:
+        return "TBD"
+    if dt.hour == 0 and dt.minute == 0:
+        return "TBD"
+    return dt.strftime("%-I:%M %p")
+
+
+def build_title(info: Dict[str, Any]) -> str:
+    """Build a human-readable event title."""
+    parts: List[str] = []
+    gender = str(info.get("gender", "")).strip()
+    level = str(info.get("level", "")).strip()
+    sport = str(info.get("sport", "")).strip()
+
+    if gender:
+        parts.append(gender.title())
+    if level:
+        parts.append(LEVEL_LABELS.get(level, level.title()))
+    if sport:
+        parts.append(sport.title())
+
+    title = " ".join(parts).strip() or str(info.get("raw", "Event")).strip() or "Event"
+
+    opponent = str(info.get("opponent", "")).strip()
+    if opponent:
+        direction = "vs" if info.get("home_away") == "home" else "at"
+        title = "%s %s %s" % (title, direction, opponent)
+
+    return title.strip()
+
+
+def build_tags(info: Dict[str, Any]) -> List[str]:
+    """Build normalized tags for JSON output."""
+    tags: List[str] = []
+    for key in ("gender", "level", "sport"):
+        value = str(info.get(key, "")).strip().lower()
+        if value:
+            tags.append(value)
+    raw = str(info.get("raw", "")).lower()
+    opponent = str(info.get("opponent", "")).lower()
+    if "scrimmage" in raw or "scrimmage" in opponent:
+        tags.append("scrimmage")
+    return tags
+
+
+def is_all_day_event(ev: Dict[str, Any]) -> bool:
+    """Return True if DTSTART is date-only or effectively all-day."""
+    dtstart = str(ev.get("DTSTART", "")).strip()
+    return bool(dtstart) and "T" not in dtstart
+
+
+def build_json_item(ev: Dict[str, Any], team_name: str) -> Dict[str, Any]:
+    """Convert a filtered event into the shared schedule JSON shape."""
+    info = ev.get("_parsed", {})
+    start_dt = ev.get("_dt")
+    end_dt = ev.get("_end_dt")
+    item: Dict[str, Any] = {
+        "source": team_name,
+        "category": "sports",
+        "title": build_title(info),
+        "status": "normal",
+        "location": str(ev.get("LOCATION", "")).strip() or None,
+        "opponent": str(info.get("opponent", "")).strip() or None,
+        "homeAway": str(info.get("home_away", "")).strip() or None,
+        "tags": build_tags(info),
+        "allDay": is_all_day_event(ev),
+    }
+
+    if start_dt is not None:
+        item["start"] = start_dt.isoformat()
+        item["timeLabel"] = format_time(start_dt)
+        item["dateLabel"] = start_dt.strftime("%a, %b %-d")
+    if end_dt is not None:
+        item["end"] = end_dt.isoformat()
+
+    clean_item = {k: v for k, v in item.items() if v not in (None, [], "")}
+    return clean_item
+
+
 def format_events(events: List[Dict[str, Any]], team_name: str) -> str:
-    """Format events grouped by day."""
+    """Format events grouped by day using the compact Discord-friendly style."""
     if not events:
         return "No events found matching your filters."
 
@@ -209,44 +299,45 @@ def format_events(events: List[Dict[str, Any]], team_name: str) -> str:
             key = "TBD"
         by_date.setdefault(key, []).append(ev)
 
-    lines = ["📅 %s Schedule" % team_name, "%s" % ("─" * 40)]
+    lines = ["%s Schedule" % team_name]
 
     for date_label, day_events in by_date.items():
-        lines.append("\n**%s**" % date_label)
+        lines.append("\n%s" % date_label)
         for ev in day_events:
-            dt = ev.get("_dt")
             info = ev.get("_parsed", {})
+            time_str = format_time(ev.get("_dt"))
+            title = build_title(info)
+            location = str(ev.get("LOCATION", "")).strip()
 
-            if dt and dt.hour == 0 and dt.minute == 0:
-                time_str = "TBD"
-            elif dt:
-                time_str = dt.strftime("%-I:%M %p")
-            else:
-                time_str = "TBD"
+            line = "- %s · %s" % (time_str, title)
+            if location:
+                line += " · %s" % location
+            lines.append(line)
 
-            parts: List[str] = []
-            if info.get("gender"):
-                parts.append(str(info["gender"]).title())
-            if info.get("level"):
-                display = info.get("level_display", info["level"])
-                parts.append(str(display).upper())
-            if info.get("sport"):
-                parts.append(str(info["sport"]).title())
-
-            sport_line = " ".join(parts) if parts else str(info.get("raw", "Event"))
-
-            if info.get("opponent"):
-                direction = "vs" if info.get("home_away") == "home" else "at"
-                sport_line += " %s %s" % (direction, info["opponent"])
-
-            location = ev.get("LOCATION", "")
-            loc_str = "  📍 %s" % location if location else ""
-
-            lines.append("  %s — %s%s" % (time_str, sport_line, loc_str))
-
-    lines.append("\n%s" % ("─" * 40))
-    lines.append("Total: %d event(s)" % len(events))
+    lines.append("\nTotal: %d event(s)" % len(events))
     return "\n".join(lines)
+
+
+def build_json_response(
+    events: List[Dict[str, Any]],
+    team_name: str,
+    timezone: str,
+    date_range: str,
+    filters: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Build structured JSON output for shared schedule rendering."""
+    items = [build_json_item(ev, team_name) for ev in events]
+    return {
+        "title": "%s Schedule" % team_name,
+        "timezone": timezone,
+        "items": items,
+        "metadata": {
+            "rangeLabel": date_range,
+            "sourceSummary": [team_name],
+            "total": len(items),
+            "filters": filters,
+        },
+    }
 
 
 def main() -> None:
@@ -261,6 +352,7 @@ def main() -> None:
     parser.add_argument("--gender", default="all", choices=["boys", "girls", "coed", "all"])
     parser.add_argument("--config", help="Path to config.json")
     parser.add_argument("--limit", type=int, default=50, help="Max events to show")
+    parser.add_argument("--format", default="text", choices=["text", "json"], help="Output format")
 
     args = parser.parse_args()
 
@@ -298,6 +390,7 @@ def main() -> None:
 
     for ev in raw_events:
         ev["_dt"] = parse_dt(ev.get("DTSTART", ""), tz)
+        ev["_end_dt"] = parse_dt(ev.get("DTEND", ""), tz)
         ev["_parsed"] = parse_summary(ev.get("SUMMARY", ""))
 
     start_dt, end_dt = get_date_range(args.date_range, tz)
@@ -324,7 +417,18 @@ def main() -> None:
     filtered.sort(key=lambda ev: ev.get("_dt") or datetime.min.replace(tzinfo=tz))
     filtered = filtered[: args.limit]
 
-    print(format_events(filtered, team_name))
+    if args.format == "json":
+        filters = {
+            "homeAway": args.home_away,
+            "sport": args.sport or None,
+            "level": args.level,
+            "gender": args.gender,
+            "limit": args.limit,
+        }
+        response = build_json_response(filtered, team_name, timezone, args.date_range, filters)
+        print(json.dumps(response, indent=2))
+    else:
+        print(format_events(filtered, team_name))
 
 
 if __name__ == "__main__":

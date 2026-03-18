@@ -13,6 +13,9 @@ license: MIT
 Fetch and display Open Swim schedules from the Dayton YMCA's West Carrollton
 and Coffman branch websites. Data is pulled live from the schedule pages.
 
+When presenting results, follow the unified Discord schedule display spec in
+`docs/schedule-display.md`.
+
 ## How It Works
 
 The schedule data is **server-rendered as static JSON** in the HTML of each
@@ -74,7 +77,7 @@ python3 ${SKILL_DIR}/scripts/fetch_open_swim.py
 # Tomorrow's events
 python3 ${SKILL_DIR}/scripts/fetch_open_swim.py --date tomorrow
 
-# Full schedule, all dates (old behavior)
+# Full schedule, all dates
 python3 ${SKILL_DIR}/scripts/fetch_open_swim.py --date all
 
 # Specific date
@@ -84,7 +87,7 @@ python3 ${SKILL_DIR}/scripts/fetch_open_swim.py --date 03/15/2026
 python3 ${SKILL_DIR}/scripts/fetch_open_swim.py --branch west-carrollton
 python3 ${SKILL_DIR}/scripts/fetch_open_swim.py --branch coffman
 
-# JSON output for programmatic use
+# Normalized JSON output for shared rendering
 python3 ${SKILL_DIR}/scripts/fetch_open_swim.py --format json
 ```
 
@@ -100,23 +103,54 @@ The script uses only Python standard library modules (no pip dependencies).
 
 #### JSON Output Structure
 
-When using `--format json`, the output is keyed by branch slug:
+When using `--format json`, the output follows the shared schedule response shape:
 
 ```json
 {
-  "west-carrollton": {
-    "branch": "West Carrollton YMCA",
-    "events": [ ... ],
-    "distinct_types": ["Adult Swim", "Open Swim", ...],
-    "total": 43
-  },
-  "coffman": { ... }
+  "title": "Open Swim Today",
+  "mode": "availability",
+  "timezone": "America/New_York",
+  "items": [
+    {
+      "source": "West Carrollton YMCA",
+      "category": "open-swim",
+      "title": "Open Swim",
+      "status": "normal",
+      "start": "2026-03-18T10:00:00-04:00",
+      "end": "2026-03-18T15:45:00-04:00",
+      "area": "Lap Pool",
+      "timeLabel": "10:00 AM–3:45 PM"
+    }
+  ],
+  "links": [
+    {
+      "label": "West Carrollton YMCA schedule",
+      "url": "https://www.daytonymca.org/west-carrollton-schedule"
+    }
+  ],
+  "metadata": {
+    "sourceSummary": ["West Carrollton YMCA", "Coffman YMCA"],
+    "distinctTypes": ["Adult Swim", "Open Swim", "Pool Closed"],
+    "total": 11
+  }
 }
 ```
 
-Each event object contains: `name`, `category`, `beginningAt`, `endingAt`,
-`date`, `days`, `weekdays`, `areaName`, `branchName`, `duration`,
-`description`, `canceled`, `isCancelled`.
+Each item may include fields like:
+
+- `source`
+- `category`
+- `title`
+- `status`
+- `start`
+- `end`
+- `area`
+- `description`
+- `note`
+- `tags`
+- `dateLabel`
+- `timeLabel`
+- `url`
 
 ## Understanding the Data
 
@@ -148,17 +182,44 @@ Events under the Open Swim category include varied `name` values:
 - `days` is an array of full day names; `weekdays` is comma-separated abbreviations
 - Dates are in MM/DD/YYYY format; times include AM/PM
 
-## Presenting Results
+## Rendering Guidance
 
-- When using the Python script, present its table output directly — do not
-  reorganize or reformat it
-- When using WebFetch, format the JSON results into a readable table sorted
-  chronologically by date and start time
-- Highlight any cancelled events prominently
-- If the user asks about a specific branch, only fetch that branch
-- Always include direct schedule links as a fallback:
-  - West Carrollton: https://www.daytonymca.org/west-carrollton-schedule
-  - Coffman: https://www.daytonymca.org/coffman-schedule
+Default to the unified schedule spec's **availability** style.
+
+### Prefer structured data
+
+- Prefer `--format json` when using the Python script so you can normalize and
+  render the results yourself
+- For WebFetch, extract JSON and then render it into the shared display format
+- Only present the raw Python table output if the user explicitly asks for the
+  full raw schedule/table view
+
+### Status mapping
+
+Normalize event names into these statuses before rendering:
+
+- `Open Swim` → `normal`
+- `Adult Swim` → `limited`
+- `Open Swim - 3 Lanes` / `Open Swim - Deep End Only` → `limited`
+- `Water Walking` / `Water Volleyball` → usually `limited`
+- `Pool Closed` → `blocked`
+- any event with `canceled` or `isCancelled` → `cancelled`
+
+### Default display behavior
+
+- Show usable swim windows first
+- Keep one primary line per item, e.g. `- 10:00 AM–3:45 PM · Open Swim · Lap Pool`
+- Use a secondary line only when needed, e.g. `  - Adults 18+ only`
+- Do **not** let `Pool Closed` rows dominate the main list
+- Collapse closure-heavy results into a short `Facility notes` section when possible
+- If there are no usable sessions, explain that clearly and then show the
+  relevant closures that explain why
+
+### Direct links
+
+Always include direct schedule links as a fallback:
+- West Carrollton: https://www.daytonymca.org/west-carrollton-schedule
+- Coffman: https://www.daytonymca.org/coffman-schedule
 
 ## Additional Resources
 
@@ -166,6 +227,7 @@ Events under the Open Swim category include varied `name` values:
 
 - **`references/data-structure.md`** — Complete field-by-field documentation of
   the `ygdScheduler._initialState` JSON schema and all known event types
+- **`../../../docs/schedule-display.md`** — Unified schedule display spec for Discord
 
 ### Scripts
 
