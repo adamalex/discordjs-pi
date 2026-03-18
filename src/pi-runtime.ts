@@ -415,13 +415,6 @@ class PiConversationWorker implements ConversationRuntime {
     if (!activeJob.responseMessage) {
       activeJob.responseMessage = await activeJob.sink.createResponseMessage(nextText);
       activeJob.lastPublishedText = nextText;
-      // Stop the typing indicator once the user can see the streaming response.
-      // Sending a message clears Discord's typing state, and further updates
-      // are visible as message edits, so the indicator is no longer needed.
-      if (activeJob.typingInterval) {
-        clearInterval(activeJob.typingInterval);
-        activeJob.typingInterval = null;
-      }
     } else {
       await activeJob.responseMessage.edit(nextText);
       activeJob.lastPublishedText = nextText;
