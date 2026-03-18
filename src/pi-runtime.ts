@@ -45,6 +45,7 @@ interface ActiveJob extends PendingJob {
   lastPublishedText?: string;
   typingInterval: NodeJS.Timeout | null;
   flushTimer: NodeJS.Timeout | null;
+  insideToolBlock: boolean;
 }
 
 export interface ConversationRuntime {
@@ -324,11 +325,15 @@ class PiConversationWorker implements ConversationRuntime {
         return;
       case "message_start":
         await this.ensureActiveJob();
-        // When a new assistant message starts and we already have accumulated text
-        // (i.e., after tool calls), insert a paragraph break so the text blocks
-        // don't get smashed together in the final Discord message.
-        if (this.activeJob && this.activeJob.accumulatedText.length > 0) {
-          this.activeJob.accumulatedText = this.activeJob.accumulatedText.trimEnd() + "\n\n";
+        if (this.activeJob) {
+          // Close any open tool block before new assistant text starts.
+          this.closeToolBlock();
+          // When a new assistant message starts and we already have accumulated text
+          // (i.e., after tool calls), insert a paragraph break so the text blocks
+          // don't get smashed together in the final Discord message.
+          if (this.activeJob.accumulatedText.length > 0) {
+            this.activeJob.accumulatedText = this.activeJob.accumulatedText.trimEnd() + "\n\n";
+          }
         }
         return;
       case "message_update":
@@ -345,10 +350,15 @@ class PiConversationWorker implements ConversationRuntime {
       case "tool_execution_start":
         await this.ensureActiveJob();
         if (this.activeJob) {
-          const line = formatToolStartLine(event.toolName, event.args);
-          if (this.activeJob.accumulatedText.length > 0) {
-            this.activeJob.accumulatedText = this.activeJob.accumulatedText.trimEnd() + "\n";
+          if (!this.activeJob.insideToolBlock) {
+            // Open a new fenced code block for tool calls.
+            if (this.activeJob.accumulatedText.length > 0) {
+              this.activeJob.accumulatedText = this.activeJob.accumulatedText.trimEnd() + "\n";
+            }
+            this.activeJob.accumulatedText += "```\n";
+            this.activeJob.insideToolBlock = true;
           }
+          const line = formatToolStartLine(event.toolName, event.args);
           this.activeJob.accumulatedText += line;
           this.scheduleFlush();
         }
@@ -361,6 +371,9 @@ class PiConversationWorker implements ConversationRuntime {
         }
         return;
       case "agent_end":
+        if (this.activeJob) {
+          this.closeToolBlock();
+        }
         await this.finalizeActiveJob();
         return;
       default:
@@ -398,7 +411,15 @@ class PiConversationWorker implements ConversationRuntime {
       accumulatedText: "",
       flushTimer: null,
       typingInterval,
+      insideToolBlock: false,
     };
+  }
+
+  private closeToolBlock(): void {
+    if (this.activeJob && this.activeJob.insideToolBlock) {
+      this.activeJob.accumulatedText = this.activeJob.accumulatedText.trimEnd() + "\n```";
+      this.activeJob.insideToolBlock = false;
+    }
   }
 
   private scheduleFlush(): void {
@@ -549,7 +570,7 @@ function formatToolStartLine(toolName: string, args: Record<string, unknown> | u
       break;
   }
 
-  return detail ? `⚙️ \`${toolName}\` \`${detail}\`` : `⚙️ \`${toolName}\``;
+  return detail ? `⚙️ ${toolName}: ${detail}` : `⚙️ ${toolName}`;
 }
 
 function truncateToolDetail(text: string): string {
