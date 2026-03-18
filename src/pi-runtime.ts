@@ -596,12 +596,30 @@ function formatToolStartLine(toolName: string, args: Record<string, unknown> | u
 
 function simplifyBashCommand(cmd: string): string {
   // Strip "cd /some/path && " prefixes — just noise in display.
-  return cmd.replace(/^cd\s+\S+\s*&&\s*/, "");
+  let simplified = cmd.replace(/^cd\s+\S+\s*&&\s*/, "");
+  // Strip trailing redirections (e.g. "2>/dev/null", "2>&1", "> /dev/null").
+  simplified = simplified.replace(/\s+\d*>\s*\S+(\s+\d*>\s*\S+)*\s*$/, "");
+  return simplified;
+}
+
+const PROJECT_ROOT = process.cwd();
+const HOME_DIR = process.env.HOME ?? "";
+
+function simplifyPaths(text: string): string {
+  // Replace project root first (more specific), then home dir.
+  let result = text;
+  if (PROJECT_ROOT) {
+    result = result.replaceAll(PROJECT_ROOT, ".");
+  }
+  if (HOME_DIR) {
+    result = result.replaceAll(HOME_DIR, "~");
+  }
+  return result;
 }
 
 function truncateToolDetail(text: string): string {
-  // Collapse to single line for display.
-  const oneLine = text.replace(/\n/g, " ").trim();
+  // Collapse to single line, simplify paths for display.
+  const oneLine = simplifyPaths(text.replace(/\n/g, " ").trim());
   if (oneLine.length <= TOOL_DETAIL_MAX_LENGTH) return oneLine;
   return oneLine.slice(0, TOOL_DETAIL_MAX_LENGTH - 3) + "...";
 }
