@@ -313,7 +313,7 @@ class PiConversationWorker implements ConversationRuntime {
         // (i.e., after tool calls), insert a paragraph break so the text blocks
         // don't get smashed together in the final Discord message.
         if (this.activeJob && this.activeJob.accumulatedText.length > 0) {
-          this.activeJob.accumulatedText += "\n\n";
+          this.activeJob.accumulatedText = this.activeJob.accumulatedText.trimEnd() + "\n\n";
         }
         return;
       case "message_update":
