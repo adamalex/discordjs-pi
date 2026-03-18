@@ -448,7 +448,12 @@ class PiConversationWorker implements ConversationRuntime {
     }
 
     this.activeJob.flushTimer = setTimeout(() => {
-      void this.flushActiveJob(false);
+      void this.flushActiveJob(false).catch((error) => {
+        this.logger.error("Failed to flush streaming Discord response", {
+          conversationKey: this.conversationKey,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
     }, 500);
   }
 

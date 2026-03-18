@@ -1,4 +1,6 @@
-const DISCORD_MESSAGE_LIMIT = 2000;
+// Keep a safety margin below Discord's 2000-character hard limit so
+// streaming previews and formatting adjustments do not overflow edits.
+const DISCORD_MESSAGE_LIMIT = 1900;
 
 export function buildStreamingPreview(text: string): string {
   const trimmed = text.trim();
@@ -14,7 +16,9 @@ export function buildStreamingPreview(text: string): string {
   // If there's an unclosed code fence, append a closing one so Discord
   // renders the block properly during streaming.
   if (hasUnclosedCodeFence(preview)) {
-    preview += "\n```";
+    const closingFence = "\n```";
+    const maxBaseLength = DISCORD_MESSAGE_LIMIT - closingFence.length;
+    preview = `${preview.slice(0, maxBaseLength).trimEnd()}${closingFence}`;
   }
 
   return preview;

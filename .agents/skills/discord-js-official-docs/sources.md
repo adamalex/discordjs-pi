@@ -1,0 +1,34 @@
+# discord.js Official Docs Skill — Source Provenance
+
+Retrieved: 2026-03-17
+
+This skill intentionally stores a compact, high-signal archive rather than mirroring the full docs site.
+Files marked `internal summary` are concise, repository-focused summaries of official material.
+Files marked `faithful excerpt` preserve short official examples or wording with provenance.
+
+| Local path | Upstream URL | Retrieval date | Upstream commit/tag/release | Type | Reason |
+|---|---|---|---|---|---|
+| `reference/official/00-upstream-surface-and-license.md` | https://raw.githubusercontent.com/discordjs/discord.js/main/README.md | 2026-03-17 | monorepo `main` | internal summary | Confirm official repo/docs/guide/package surfaces and source locations |
+| `reference/official/00-upstream-surface-and-license.md` | https://raw.githubusercontent.com/discordjs/discord.js/main/LICENSE | 2026-03-17 | monorepo `main` | internal summary | Confirm license before copying or summarizing official material |
+| `reference/official/00-upstream-surface-and-license.md` | https://github.com/discordjs/discord.js/releases | 2026-03-17 | latest visible `discord.js` release `14.25.1` (`fdac8c5`) | internal summary | Record latest visible package release for provenance and drift checks |
+| `reference/official/01-package-overview.md` | https://discord.js.org/docs/packages/discord.js/main | 2026-03-17 | latest visible `discord.js` release `14.25.1` (`fdac8c5`); docs page is current `main` surface | internal summary | Capture official package overview, runtime requirement, optional packages, and top-level examples |
+| `reference/official/01-package-overview.md` | https://raw.githubusercontent.com/discordjs/discord.js/main/README.md | 2026-03-17 | monorepo `main` | internal summary | Confirm the main package is `discord.js` within the monorepo |
+| `reference/official/02-core-api-for-bots.md` | https://discord.js.org/docs/packages/discord.js/main/Client%3AClass | 2026-03-17 | docs `main`; no page-level tag exposed | internal summary | Document the main entry point for bot clients and core event surfaces |
+| `reference/official/02-core-api-for-bots.md` | https://discord.js.org/docs/packages/discord.js/main/ChatInputCommandInteraction%3AClass | 2026-03-17 | docs `main`; no page-level tag exposed | internal summary | Document reply lifecycle and command interaction methods |
+| `reference/official/02-core-api-for-bots.md` | https://discord.js.org/docs/packages/discord.js/main/REST%3AClass | 2026-03-17 | docs `main`; no page-level tag exposed | internal summary | Document command deployment and direct REST usage |
+| `reference/official/02-core-api-for-bots.md` | https://discord.js.org/docs/packages/discord.js/main/GatewayIntentBits%3AEnum | 2026-03-17 | docs `main`; no page-level tag exposed | internal summary | Document the intent enum used by client initialization |
+| `reference/official/02-core-api-for-bots.md` | https://discord.js.org/docs/packages/discord-api-types/main/Routes%3AVariable | 2026-03-17 | docs `main`; no page-level tag exposed | internal summary | Document route helpers used during application command deployment |
+| `reference/official/03-slash-command-workflow.md` | https://discordjs.guide/legacy/app-creation/creating-commands | 2026-03-17 | current guide page; no page-level tag exposed | internal summary | Capture command module shape and `SlashCommandBuilder` usage |
+| `reference/official/03-slash-command-workflow.md` | https://discordjs.guide/legacy/app-creation/handling-commands | 2026-03-17 | current guide page; no page-level tag exposed | internal summary | Capture command loader and `InteractionCreate` handler workflow |
+| `reference/official/03-slash-command-workflow.md` | https://discordjs.guide/legacy/app-creation/deploying-commands | 2026-03-17 | current guide page; no page-level tag exposed | internal summary | Capture guild/global command deployment guidance |
+| `reference/official/03-slash-command-workflow.md` | https://discordjs.guide/slash-commands/response-methods.html | 2026-03-17 | current guide page; no page-level tag exposed | internal summary | Capture response timing, deferral, ephemeral replies, and follow-up rules |
+| `reference/official/04-components-and-intents.md` | https://discordjs.guide/interactive-components/buttons | 2026-03-17 | current guide page; no page-level tag exposed | internal summary | Capture button-building and action-row patterns |
+| `reference/official/04-components-and-intents.md` | https://discordjs.guide/message-components/interactions.html | 2026-03-17 | current guide page; no page-level tag exposed | internal summary | Capture component interaction handling strategies |
+| `reference/official/04-components-and-intents.md` | https://discordjs.guide/popular-topics/intents.html | 2026-03-17 | current guide page; no page-level tag exposed | internal summary | Capture intent selection, privileged intents, and cache implications |
+| `reference/official/05-v14-migration-cautions.md` | https://discordjs.guide/additional-info/changes-in-v14.html | 2026-03-17 | current guide page; no page-level tag exposed | internal summary | Capture high-risk API changes still likely to appear in older code and examples |
+| `reference/examples/01-register-commands.md` | https://discord.js.org/docs/packages/discord.js/main | 2026-03-17 | latest visible `discord.js` release `14.25.1` (`fdac8c5`); docs page is current `main` surface | faithful excerpt | Preserve the official global command registration example shape |
+| `reference/examples/01-register-commands.md` | https://discordjs.guide/legacy/app-creation/deploying-commands | 2026-03-17 | current guide page; no page-level tag exposed | faithful excerpt | Preserve the official guild deployment variant and deployment workflow |
+| `reference/examples/02-command-handler.md` | https://discordjs.guide/legacy/app-creation/creating-commands | 2026-03-17 | current guide page; no page-level tag exposed | faithful excerpt | Preserve the official command module export shape |
+| `reference/examples/02-command-handler.md` | https://discordjs.guide/legacy/app-creation/handling-commands | 2026-03-17 | current guide page; no page-level tag exposed | faithful excerpt | Preserve the official command loader and interaction handler shape |
+| `reference/examples/03-response-patterns.md` | https://discordjs.guide/slash-commands/response-methods.html | 2026-03-17 | current guide page; no page-level tag exposed | faithful excerpt | Preserve the official `reply`, ephemeral, and deferred response examples |
+| `reference/examples/04-buttons.md` | https://discordjs.guide/interactive-components/buttons | 2026-03-17 | current guide page; no page-level tag exposed | faithful excerpt | Preserve the official `ButtonBuilder` and `ActionRowBuilder` example shape |

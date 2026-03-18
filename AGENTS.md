@@ -80,7 +80,7 @@ scripts/
   self-deploy.sh    — pre-flight checks + trigger restart
 test/               — vitest tests
 docs/pi/            — archived Pi SDK reference docs
-.claude/skills/     — Discord.js reference skill
+.agents/skills/     — Discord.js reference skill
 .data/              — runtime data (sessions, health file, restart sentinel, wrapper pid)
 ```
 
