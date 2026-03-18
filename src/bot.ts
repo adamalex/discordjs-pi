@@ -1,3 +1,5 @@
+import fs from "node:fs/promises";
+import path from "node:path";
 import { Client, Events, GatewayIntentBits, Partials, type Message } from "discord.js";
 import type { AppConfig } from "./config.js";
 import {
@@ -77,6 +79,7 @@ export class DiscordPiBot {
   async start(): Promise<void> {
     this.client.once(Events.ClientReady, (client) => {
       this.logger.info(`Discord bot connected as ${client.user.tag}`);
+      void this.writeHealthFile();
     });
 
     this.client.on(Events.MessageCreate, (message) => {
@@ -87,8 +90,32 @@ export class DiscordPiBot {
   }
 
   async shutdown(): Promise<void> {
+    await this.removeHealthFile();
     await this.registry.shutdown();
     await this.client.destroy();
+  }
+
+  private get healthFilePath(): string {
+    return path.join(this.config.projectRoot, ".data", "healthy");
+  }
+
+  private async writeHealthFile(): Promise<void> {
+    try {
+      const dataDir = path.dirname(this.healthFilePath);
+      await fs.mkdir(dataDir, { recursive: true });
+      await fs.writeFile(this.healthFilePath, new Date().toISOString(), "utf-8");
+      this.logger.info("Health file written — bot is ready.");
+    } catch (error) {
+      this.logger.warn("Failed to write health file", error);
+    }
+  }
+
+  private async removeHealthFile(): Promise<void> {
+    try {
+      await fs.unlink(this.healthFilePath);
+    } catch {
+      // File may not exist, that's fine
+    }
   }
 
   private async handleMessage(message: Message<boolean>): Promise<void> {
