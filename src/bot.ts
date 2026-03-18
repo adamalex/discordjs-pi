@@ -1,6 +1,12 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { Client, Events, GatewayIntentBits, Partials, type Message } from "discord.js";
+import {
+  Client,
+  Events,
+  GatewayIntentBits,
+  Partials,
+  type Message,
+} from "discord.js";
 import type { AppConfig } from "./config.js";
 import {
   ConversationRegistry,
@@ -16,6 +22,11 @@ import {
   parseDmCommand,
 } from "./discord-routing.js";
 import type { Logger } from "./logger.js";
+
+interface DeployContext {
+  conversationKey: string;
+  commitMessage: string;
+}
 
 class DiscordEditableMessage implements EditableMessage {
   constructor(private readonly message: Message<true>) {}
@@ -40,6 +51,33 @@ class DiscordResponseSink implements ResponseSink {
   async sendMessage(content: string): Promise<void> {
     await getSendableChannel(this.message).send({ content });
   }
+}
+
+class ChannelResponseSink implements ResponseSink {
+  private readonly channel: SendableChannel;
+
+  constructor(channel: SendableChannel) {
+    this.channel = channel;
+  }
+
+  async sendTyping(): Promise<void> {
+    await this.channel.sendTyping();
+  }
+
+  async createResponseMessage(initialContent: string): Promise<EditableMessage> {
+    const sent = await this.channel.send({ content: initialContent });
+    return new DiscordEditableMessage(sent as Message<true>);
+  }
+
+  async sendMessage(content: string): Promise<void> {
+    await this.channel.send({ content });
+  }
+}
+
+/** A channel that supports send() and sendTyping(). */
+interface SendableChannel {
+  sendTyping(): Promise<void>;
+  send(options: { content: string }): Promise<Message>;
 }
 
 export class DiscordPiBot {
@@ -80,6 +118,7 @@ export class DiscordPiBot {
     this.client.once(Events.ClientReady, (client) => {
       this.logger.info(`Discord bot connected as ${client.user.tag}`);
       void this.writeHealthFile();
+      void this.resumeAfterDeploy();
     });
 
     this.client.on(Events.MessageCreate, (message) => {
@@ -115,6 +154,62 @@ export class DiscordPiBot {
       await fs.unlink(this.healthFilePath);
     } catch {
       // File may not exist, that's fine
+    }
+  }
+
+  private get deployContextPath(): string {
+    return path.join(this.config.projectRoot, ".data", "deploy-context.json");
+  }
+
+  private async resumeAfterDeploy(): Promise<void> {
+    let context: DeployContext;
+
+    try {
+      const raw = await fs.readFile(this.deployContextPath, "utf-8");
+      context = JSON.parse(raw) as DeployContext;
+    } catch {
+      // No deploy context — normal startup, nothing to do.
+      return;
+    }
+
+    // Remove the file immediately so we don't re-trigger on a subsequent restart.
+    await fs.unlink(this.deployContextPath).catch(() => undefined);
+
+    const channelId = extractChannelId(context.conversationKey);
+    if (!channelId) {
+      this.logger.warn("Could not extract channel ID from deploy context", {
+        conversationKey: context.conversationKey,
+      });
+      return;
+    }
+
+    try {
+      const channel = await this.client.channels.fetch(channelId);
+      if (!channel || !channel.isTextBased()) {
+        this.logger.warn("Deploy resume channel is not text-based or not found", { channelId });
+        return;
+      }
+
+      const sink = new ChannelResponseSink(channel as unknown as SendableChannel);
+      const prompt = [
+        "System notification: You have just been restarted after a successful self-deploy.",
+        `Deploy commit message: "${context.commitMessage}"`,
+        "Your conversation history with the user is intact from the session file.",
+        "Send a brief message to the user letting them know you're back and what you deployed.",
+        "Then continue the conversation naturally — if there's anything to follow up on, do so.",
+      ].join("\n");
+
+      this.logger.info("Resuming conversation after deploy", {
+        conversationKey: context.conversationKey,
+        commitMessage: context.commitMessage,
+      });
+
+      await this.registry.handlePrompt(context.conversationKey, prompt, sink);
+    } catch (error) {
+      this.logger.error("Failed to resume conversation after deploy", {
+        conversationKey: context.conversationKey,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
@@ -192,4 +287,14 @@ function getSendableChannel(message: Message<boolean>): {
     sendTyping(): Promise<void>;
     send(payload: { content: string }): Promise<Message<true>>;
   };
+}
+
+/**
+ * Extract the Discord channel ID from a conversation key.
+ * Key formats: "dm:<channelId>", "thread:<guildId>:<channelId>", "channel:<guildId>:<channelId>"
+ */
+function extractChannelId(conversationKey: string): string | null {
+  const parts = conversationKey.split(":");
+  if (parts.length < 2) return null;
+  return parts[parts.length - 1] || null;
 }

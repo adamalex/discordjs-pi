@@ -103,6 +103,7 @@ export async function createPiEnvironment(
 export class ConversationRegistry {
   private readonly runtimes = new Map<string, ConversationRuntime>();
   private readonly creating = new Map<string, Promise<ConversationRuntime>>();
+  private lastActiveConversationKey: string | null = null;
 
   constructor(
     private readonly sessionRootDir: string,
@@ -115,8 +116,22 @@ export class ConversationRegistry {
   }
 
   async handlePrompt(conversationKey: string, text: string, sink: ResponseSink): Promise<void> {
+    this.lastActiveConversationKey = conversationKey;
+    void this.persistLastActiveConversation(conversationKey);
     const runtime = await this.getOrCreateRuntime(conversationKey);
     await runtime.handlePrompt(text, sink);
+  }
+
+  private get lastActiveConversationPath(): string {
+    return path.join(path.dirname(this.sessionRootDir), "last-active-conversation");
+  }
+
+  private async persistLastActiveConversation(conversationKey: string): Promise<void> {
+    try {
+      await fs.writeFile(this.lastActiveConversationPath, conversationKey, "utf-8");
+    } catch (error) {
+      this.logger.warn("Failed to persist last active conversation", error);
+    }
   }
 
   getActiveRuntimeCount(): number {

@@ -100,7 +100,23 @@ else
   rm -f "$ROLLBACK_TAG_FILE"
 fi
 
-# ── Step 5: Signal restart ─────────────────────────────────────
+# ── Step 5: Write deploy context for post-restart resume ───────
+
+LAST_ACTIVE_FILE="$DATA_DIR/last-active-conversation"
+DEPLOY_CONTEXT_FILE="$DATA_DIR/deploy-context.json"
+
+if [[ -f "$LAST_ACTIVE_FILE" ]]; then
+  CONVERSATION_KEY="$(cat "$LAST_ACTIVE_FILE")"
+  printf '{"conversationKey":"%s","commitMessage":"%s"}\n' \
+    "$CONVERSATION_KEY" \
+    "$(echo "$COMMIT_MSG" | sed 's/"/\\"/g')" \
+    > "$DEPLOY_CONTEXT_FILE"
+  log "Deploy context written for conversation: $CONVERSATION_KEY"
+else
+  log "No last-active-conversation found; skipping deploy context."
+fi
+
+# ── Step 6: Signal restart ─────────────────────────────────────
 
 log "All checks passed. Signaling restart..."
 mkdir -p "$DATA_DIR"
