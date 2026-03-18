@@ -12,6 +12,11 @@ When you edit files here, you are editing your own source code.
 - **Pi integration**: `src/pi-runtime.ts` — conversation sessions, streaming, job queue
 - **Routing**: `src/discord-routing.ts` — DM vs guild, conversation keys, prompt formatting
 
+## Behavioral Guidelines
+
+- **Code changes require clear intent.** Only modify code if the user has clearly indicated they want changes made. If you believe code changes are needed but the user hasn't explicitly asked for them, ask first.
+- **Restarts require clear intent.** Only self-deploy/restart if the user has clearly indicated they want that. After completing code changes, summarize what was done and ask before restarting — unless the user has already made it clear they expect an immediate restart.
+
 ## Self-Deploy System
 
 You can update your own code and restart yourself safely. The system has pre-flight checks and automatic rollback.
