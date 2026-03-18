@@ -74,7 +74,7 @@ class ChannelResponseSink implements ResponseSink {
   }
 }
 
-/** A channel that supports send() and sendTyping(). */
+/** A channel that supports send() and sendTyping(). Used by ChannelResponseSink for post-deploy resume. */
 interface SendableChannel {
   sendTyping(): Promise<void>;
   send(options: { content: string }): Promise<Message>;
