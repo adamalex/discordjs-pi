@@ -190,6 +190,8 @@ Default to the unified schedule spec's **availability** style.
 
 - Prefer `--format json` when using the Python script so you can normalize and
   render the results yourself
+- If the `render_schedule` tool is available, pass the normalized JSON response
+  to it instead of hand-formatting long schedule output yourself
 - For WebFetch, extract JSON and then render it into the shared display format
 - Only present the raw Python table output if the user explicitly asks for the
   full raw schedule/table view

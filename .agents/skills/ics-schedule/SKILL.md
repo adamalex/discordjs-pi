@@ -101,6 +101,7 @@ Default to the unified schedule spec's **compact** style.
 ### Prefer structured output
 
 - Prefer `--format json` when possible so you can render with the shared schedule rules
+- If the `render_schedule` tool is available, pass the normalized JSON response to it instead of hand-formatting the full schedule yourself
 - Use `--format text` for quick inspection or if the user wants a simpler/rawer script output
 
 ### Normalization guidance

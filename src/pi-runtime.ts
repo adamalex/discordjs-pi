@@ -20,6 +20,14 @@ import { ModelRegistry as PiModelRegistry } from "@mariozechner/pi-coding-agent"
 import type { ImageContent, AssistantMessage } from "@mariozechner/pi-ai";
 import type { AppConfig } from "./config.js";
 import type { Logger } from "./logger.js";
+import { renderSchedule } from "./schedule-render.js";
+import type {
+  RenderScheduleOptions,
+  ScheduleItem,
+  ScheduleRenderMode,
+  ScheduleResponse,
+  ScheduleStatus,
+} from "./schedule-types.js";
 import { buildStreamingPreview, splitDiscordMessage } from "./text.js";
 
 const DISCORD_SYSTEM_PROMPT_APPENDIX = [
@@ -38,6 +46,12 @@ const DISCORD_SYSTEM_PROMPT_APPENDIX = [
   "- Mention file paths clearly when relevant.",
   "- Summarize actions and findings instead of dumping raw tool chatter unless the user requests it.",
   "- Ask before restart, deploy, or destructive changes unless the user explicitly requests them.",
+  "",
+  "## Schedule Formatting",
+  "",
+  "- For schedule-like results, prefer the shared Discord schedule display format.",
+  "- When a schedule script can return normalized JSON, prefer that path and use the render_schedule tool instead of hand-formatting long schedule output.",
+  "- Use compact mode by default, detailed mode only when the user asks for full details, and availability mode for facility/open-swim schedules.",
 ].join("\n");
 
 export interface EditableMessage {
@@ -316,6 +330,7 @@ export async function createConversationRuntime(
     }
     return worker.sendProjectFileAttachment(request);
   });
+  const renderScheduleTool = createRenderScheduleTool();
 
   const sessionManager = SessionManager.continueRecent(config.projectRoot, conversationDir);
   const createSessionOptions = {
@@ -331,7 +346,7 @@ export async function createConversationRuntime(
       createFindTool(config.projectRoot),
       createLsTool(config.projectRoot),
     ],
-    customTools: [discordAttachFileTool],
+    customTools: [discordAttachFileTool, renderScheduleTool],
   };
   const { session, modelFallbackMessage } = await createAgentSession(
     env.requestedModel
@@ -814,6 +829,237 @@ function createDiscordAttachFileTool(
   };
 }
 
+const RENDER_SCHEDULE_PARAMS = Type.Object({
+  response: Type.Any({
+    description:
+      "Normalized schedule response data. Pass the parsed JSON object from a schedule script, or a JSON string containing that object.",
+  }),
+  mode: Type.Optional(
+    Type.Union([Type.Literal("compact"), Type.Literal("detailed"), Type.Literal("availability")], {
+      description: "Optional display mode override.",
+    }),
+  ),
+  showLinks: Type.Optional(Type.Boolean({ description: "Whether to include footer links." })),
+  showSourceHeadings: Type.Optional(
+    Type.Boolean({ description: "Whether to force source headings on or off." }),
+  ),
+  showBlocked: Type.Optional(
+    Type.Boolean({ description: "Whether blocked items should appear in the main list." }),
+  ),
+  collapseBlockedIntoNotes: Type.Optional(
+    Type.Boolean({ description: "Whether blocked items should be collapsed into notes." }),
+  ),
+  maxItems: Type.Optional(
+    Type.Integer({ minimum: 1, description: "Optional cap on rendered primary items." }),
+  ),
+  now: Type.Optional(
+    Type.String({
+      description: "Optional ISO timestamp to use as the reference point for Today/Tomorrow labels.",
+    }),
+  ),
+});
+
+const SCHEDULE_RENDER_MODES = new Set<ScheduleRenderMode>(["compact", "detailed", "availability"]);
+const SCHEDULE_STATUSES = new Set<ScheduleStatus>([
+  "normal",
+  "limited",
+  "blocked",
+  "cancelled",
+  "postponed",
+]);
+
+type RenderScheduleParams = Static<typeof RENDER_SCHEDULE_PARAMS>;
+
+function createRenderScheduleTool(): ToolDefinition {
+  return {
+    name: "render_schedule",
+    label: "Render Schedule",
+    description:
+      "Render normalized schedule JSON into the shared Discord-friendly schedule display format.",
+    promptSnippet:
+      "Render normalized schedule JSON into the shared Discord schedule display format.",
+    promptGuidelines: [
+      "Use render_schedule for schedule-like results after you have normalized data from a script or feed.",
+      "Prefer schedule scripts' JSON modes when available, then pass that normalized data to render_schedule.",
+      "Use compact mode by default, detailed mode only when the user asks for full detail, and availability mode for facility/open-swim schedules.",
+      "Do not use render_schedule for non-schedule content.",
+    ],
+    parameters: RENDER_SCHEDULE_PARAMS,
+    async execute(_toolCallId, rawParams) {
+      const params = rawParams as RenderScheduleParams;
+      const response = normalizeScheduleResponseInput(params.response);
+      const options = normalizeRenderScheduleOptions(params);
+      const rendered = renderSchedule(response, options);
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: rendered,
+          },
+        ],
+        details: {
+          title: response.title,
+          itemCount: response.items.length,
+          mode: options.mode ?? response.mode ?? "compact",
+        },
+      };
+    },
+  };
+}
+
+function normalizeRenderScheduleOptions(params: RenderScheduleParams): RenderScheduleOptions {
+  const options: RenderScheduleOptions = {};
+  if (params.mode) {
+    options.mode = params.mode;
+  }
+  if (params.showLinks !== undefined) {
+    options.showLinks = params.showLinks;
+  }
+  if (params.showSourceHeadings !== undefined) {
+    options.showSourceHeadings = params.showSourceHeadings;
+  }
+  if (params.showBlocked !== undefined) {
+    options.showBlocked = params.showBlocked;
+  }
+  if (params.collapseBlockedIntoNotes !== undefined) {
+    options.collapseBlockedIntoNotes = params.collapseBlockedIntoNotes;
+  }
+  if (params.maxItems !== undefined) {
+    options.maxItems = Math.max(1, Math.floor(params.maxItems));
+  }
+  if (params.now) {
+    const parsed = new Date(params.now);
+    if (Number.isNaN(parsed.getTime())) {
+      throw new Error("render_schedule now must be a valid ISO date/time string.");
+    }
+    options.now = parsed;
+  }
+  return options;
+}
+
+function normalizeScheduleResponseInput(value: unknown): ScheduleResponse {
+  let raw = value;
+  if (typeof raw === "string") {
+    try {
+      raw = JSON.parse(raw);
+    } catch (error) {
+      throw new Error(
+        `render_schedule received invalid JSON string: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  if (!isRecord(raw)) {
+    throw new Error("render_schedule response must be an object or a JSON string containing one.");
+  }
+
+  const title = expectNonEmptyString(raw.title, "response.title");
+  const itemsRaw = raw.items;
+  if (!Array.isArray(itemsRaw)) {
+    throw new Error("render_schedule response.items must be an array.");
+  }
+
+  const response: ScheduleResponse = {
+    title,
+    items: itemsRaw.map((item, index) => normalizeScheduleItemInput(item, `response.items[${index}]`)),
+  };
+
+  if (isScheduleRenderMode(raw.mode)) {
+    response.mode = raw.mode;
+  }
+  if (typeof raw.timezone === "string" && raw.timezone.trim()) {
+    response.timezone = raw.timezone.trim();
+  }
+  if (Array.isArray(raw.notes)) {
+    response.notes = raw.notes.filter((note): note is string => typeof note === "string" && note.trim().length > 0);
+  }
+  if (Array.isArray(raw.links)) {
+    response.links = raw.links
+      .filter(isRecord)
+      .map((link, index) => ({
+        label: expectNonEmptyString(link.label, `response.links[${index}].label`),
+        url: expectNonEmptyString(link.url, `response.links[${index}].url`),
+      }));
+  }
+  if (isRecord(raw.metadata)) {
+    response.metadata = raw.metadata;
+  }
+
+  return response;
+}
+
+function normalizeScheduleItemInput(value: unknown, label: string): ScheduleItem {
+  if (!isRecord(value)) {
+    throw new Error(`${label} must be an object.`);
+  }
+
+  const status = expectScheduleStatus(value.status, `${label}.status`);
+  const item: ScheduleItem = {
+    source: expectNonEmptyString(value.source, `${label}.source`),
+    category: expectNonEmptyString(value.category, `${label}.category`),
+    title: expectNonEmptyString(value.title, `${label}.title`),
+    status,
+  };
+
+  assignOptionalString(item, "id", value.id);
+  assignOptionalString(item, "start", value.start);
+  assignOptionalString(item, "end", value.end);
+  assignOptionalString(item, "dateLabel", value.dateLabel);
+  assignOptionalString(item, "timeLabel", value.timeLabel);
+  assignOptionalString(item, "location", value.location);
+  assignOptionalString(item, "area", value.area);
+  assignOptionalString(item, "opponent", value.opponent);
+  assignOptionalString(item, "note", value.note);
+  assignOptionalString(item, "description", value.description);
+  assignOptionalString(item, "url", value.url);
+
+  if (value.homeAway === "home" || value.homeAway === "away") {
+    item.homeAway = value.homeAway;
+  }
+  if (typeof value.allDay === "boolean") {
+    item.allDay = value.allDay;
+  }
+  if (Array.isArray(value.tags)) {
+    const tags = value.tags.filter((tag): tag is string => typeof tag === "string" && tag.trim().length > 0);
+    if (tags.length > 0) {
+      item.tags = tags;
+    }
+  }
+
+  return item;
+}
+
+function assignOptionalString<T extends object, K extends keyof T>(target: T, key: K, value: unknown): void {
+  if (typeof value === "string" && value.trim()) {
+    target[key] = value.trim() as T[K];
+  }
+}
+
+function expectNonEmptyString(value: unknown, label: string): string {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error(`${label} must be a non-empty string.`);
+  }
+  return value.trim();
+}
+
+function expectScheduleStatus(value: unknown, label: string): ScheduleStatus {
+  if (typeof value !== "string" || !SCHEDULE_STATUSES.has(value as ScheduleStatus)) {
+    throw new Error(`${label} must be one of: ${Array.from(SCHEDULE_STATUSES).join(", ")}.`);
+  }
+  return value as ScheduleStatus;
+}
+
+function isScheduleRenderMode(value: unknown): value is ScheduleRenderMode {
+  return typeof value === "string" && SCHEDULE_RENDER_MODES.has(value as ScheduleRenderMode);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export const createRenderScheduleToolForTests = createRenderScheduleTool;
+
 export async function sendProjectFileAttachment(
   projectRoot: string,
   request: ProjectFileAttachmentRequest,
@@ -899,6 +1145,9 @@ function formatToolStartLine(toolName: string, args: Record<string, unknown> | u
     case "discord_attach_file":
       detail = simplifyPaths(String(args?.path ?? ""));
       break;
+    case "render_schedule":
+      detail = truncateToolDetail(extractRenderScheduleDetail(args));
+      break;
     default:
       break;
   }
@@ -927,6 +1176,24 @@ function simplifyPaths(text: string): string {
     result = result.replaceAll(HOME_DIR, "~");
   }
   return result;
+}
+
+function extractRenderScheduleDetail(args: Record<string, unknown> | undefined): string {
+  const response = args?.response;
+  if (typeof response === "string") {
+    try {
+      const parsed = JSON.parse(response) as unknown;
+      if (isRecord(parsed) && typeof parsed.title === "string" && parsed.title.trim()) {
+        return parsed.title.trim();
+      }
+    } catch {
+      return "json";
+    }
+  }
+  if (isRecord(response) && typeof response.title === "string" && response.title.trim()) {
+    return response.title.trim();
+  }
+  return "";
 }
 
 function truncateToolDetail(text: string): string {

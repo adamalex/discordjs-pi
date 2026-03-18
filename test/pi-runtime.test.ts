@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ConversationRegistry,
   createConversationWorkerForTests,
+  createRenderScheduleToolForTests,
   sendProjectFileAttachment,
   type ConversationRuntime,
   type EditableMessage,
@@ -325,6 +326,54 @@ describe("Pi conversation runtime queueing", () => {
     expect(sink.createdMessages).toHaveLength(1);
     expect(sink.createdMessages[0]?.edits).toEqual(["first response"]);
     expect(sink.sentMessages).toEqual([]);
+  });
+});
+
+describe("render_schedule tool", () => {
+  it("renders normalized schedule responses with the shared formatter", async () => {
+    const tool = createRenderScheduleToolForTests();
+    const execute = tool.execute as unknown as (
+      toolCallId: string,
+      rawParams: unknown,
+      signal?: AbortSignal,
+      onUpdate?: unknown,
+      ctx?: unknown,
+    ) => Promise<{ content: Array<{ type: string; text?: string }> }>;
+    const result = await execute("call-1", {
+      response: {
+        title: "Open Swim Today",
+        mode: "availability",
+        timezone: "America/New_York",
+        items: [
+          {
+            source: "West Carrollton YMCA",
+            category: "open-swim",
+            title: "Open Swim",
+            status: "normal",
+            start: "2026-03-18T10:00:00-04:00",
+            end: "2026-03-18T15:45:00-04:00",
+            area: "Lap Pool",
+          },
+          {
+            source: "West Carrollton YMCA",
+            category: "open-swim",
+            title: "Pool Closed",
+            status: "blocked",
+            start: "2026-03-18T12:00:00-04:00",
+            end: "2026-03-18T16:00:00-04:00",
+            area: "Therapy Pool",
+          },
+        ],
+      },
+      now: "2026-03-18T12:00:00-04:00",
+    });
+
+    expect(result.content[0]?.type).toBe("text");
+    const text = result.content[0] && "text" in result.content[0] ? result.content[0].text : "";
+    expect(text).toContain("**Open Swim Today**");
+    expect(text).toContain("- 10:00 AM–3:45 PM · Open Swim · Lap Pool");
+    expect(text).toContain("**Facility notes**");
+    expect(text).toContain("Therapy Pool closed 12:00 PM–4:00 PM");
   });
 });
 
