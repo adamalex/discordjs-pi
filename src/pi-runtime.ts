@@ -360,7 +360,7 @@ class PiConversationWorker implements ConversationRuntime {
           if (!this.activeJob.insideToolBlock) {
             // Open a new fenced code block for tool calls.
             if (this.activeJob.accumulatedText.length > 0) {
-              this.activeJob.accumulatedText = this.activeJob.accumulatedText.trimEnd() + "\n";
+              this.activeJob.accumulatedText = this.activeJob.accumulatedText.trimEnd() + "\n\n";
             }
             this.activeJob.accumulatedText += "```\n";
             this.activeJob.insideToolBlock = true;
