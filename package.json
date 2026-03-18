@@ -6,7 +6,8 @@
   "scripts": {
     "build": "tsc --noEmit",
     "start": "tsx src/index.ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "lint:skills": "tsx scripts/lint-skills.ts"
   },
   "dependencies": {
     "@mariozechner/pi-coding-agent": "0.58.4",

@@ -79,7 +79,7 @@ scripts/
   run.sh            — process manager wrapper (start bot under this)
   self-deploy.sh    — pre-flight checks + trigger restart
 test/               — vitest tests
-.agents/skills/     — local reference skills (Discord.js docs, Pi SDK docs)
+.agents/skills/     — local agent skills (Discord.js docs, Pi SDK docs, skill packaging lint)
 .data/              — runtime data (sessions, health file, restart sentinel, wrapper pid)
 ```
 
@@ -87,5 +87,6 @@ test/               — vitest tests
 
 - **Type-check**: `npx tsc --noEmit`
 - **Tests**: `npx vitest run`
+- **Skill packaging lint**: `npm run lint:skills`
 - **Start (direct)**: `npm start`
 - **Start (with process manager)**: `./scripts/run.sh`
