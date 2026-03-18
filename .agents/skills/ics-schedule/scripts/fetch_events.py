@@ -25,6 +25,7 @@ import re
 import sys
 import urllib.request
 from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional, Tuple
 
 try:
     from zoneinfo import ZoneInfo
@@ -33,47 +34,46 @@ except ImportError:
     from backports.zoneinfo import ZoneInfo
 
 
-def parse_ics(text: str) -> list[dict]:
+def parse_ics(text: str) -> List[Dict[str, str]]:
     """Parse ICS text into a list of event dicts."""
-    events = []
-    current = None
+    events: List[Dict[str, str]] = []
+    current: Optional[Dict[str, str]] = None
     for line in text.splitlines():
-        line = line.rstrip('\r')
-        if line == 'BEGIN:VEVENT':
+        line = line.rstrip("\r")
+        if line == "BEGIN:VEVENT":
             current = {}
-        elif line == 'END:VEVENT':
+        elif line == "END:VEVENT":
             if current:
                 events.append(current)
             current = None
-        elif current is not None and ':' in line:
+        elif current is not None and ":" in line:
             # Handle properties with parameters like DTSTART;VALUE=DATE:20260314
-            key_part, _, value = line.partition(':')
-            key = key_part.split(';')[0]
+            key_part, _, value = line.partition(":")
+            key = key_part.split(";")[0]
             current[key] = value
     return events
 
 
-def parse_dt(dt_str: str, tz: ZoneInfo) -> datetime | None:
+def parse_dt(dt_str: str, tz: ZoneInfo) -> Optional[datetime]:
     """Parse an ICS datetime string to a timezone-aware datetime."""
     if not dt_str:
         return None
     dt_str = dt_str.strip()
     try:
-        if dt_str.endswith('Z'):
-            dt = datetime.strptime(dt_str, '%Y%m%dT%H%M%SZ')
-            return dt.replace(tzinfo=ZoneInfo('UTC')).astimezone(tz)
-        elif 'T' in dt_str:
-            dt = datetime.strptime(dt_str, '%Y%m%dT%H%M%S')
+        if dt_str.endswith("Z"):
+            dt = datetime.strptime(dt_str, "%Y%m%dT%H%M%SZ")
+            return dt.replace(tzinfo=ZoneInfo("UTC")).astimezone(tz)
+        if "T" in dt_str:
+            dt = datetime.strptime(dt_str, "%Y%m%dT%H%M%S")
             return dt.replace(tzinfo=tz)
-        else:
-            # Date only (all-day event)
-            dt = datetime.strptime(dt_str, '%Y%m%d')
-            return dt.replace(tzinfo=tz)
+        # Date only (all-day event)
+        dt = datetime.strptime(dt_str, "%Y%m%d")
+        return dt.replace(tzinfo=tz)
     except ValueError:
         return None
 
 
-def parse_summary(summary: str) -> dict:
+def parse_summary(summary: str) -> Dict[str, Any]:
     """Extract sport, level, gender, opponent, and home/away from SUMMARY.
 
     Examples:
@@ -82,13 +82,13 @@ def parse_summary(summary: str) -> dict:
         "Girls JV Lacrosse at Alter Scrimmage" ->
             gender=girls, level=jv, sport=lacrosse, opponent=Alter Scrimmage, home_away=away
     """
-    result = {
-        'gender': '',
-        'level': '',
-        'sport': '',
-        'opponent': '',
-        'home_away': '',
-        'raw': summary
+    result: Dict[str, Any] = {
+        "gender": "",
+        "level": "",
+        "sport": "",
+        "opponent": "",
+        "home_away": "",
+        "raw": summary,
     }
     if not summary:
         return result
@@ -96,102 +96,93 @@ def parse_summary(summary: str) -> dict:
     s = summary.strip()
 
     # Detect home/away and split on " vs " or " at "
-    # Use last occurrence for " at " since location names might contain "at"
-    vs_match = re.search(r'\s+vs\s+', s, re.IGNORECASE)
-    at_match = re.search(r'\s+at\s+', s, re.IGNORECASE)
+    vs_match = re.search(r"\s+vs\s+", s, re.IGNORECASE)
+    at_match = re.search(r"\s+at\s+", s, re.IGNORECASE)
 
     if vs_match:
-        result['home_away'] = 'home'
-        prefix = s[:vs_match.start()]
-        result['opponent'] = s[vs_match.end():].strip()
+        result["home_away"] = "home"
+        prefix = s[: vs_match.start()]
+        result["opponent"] = s[vs_match.end() :].strip()
     elif at_match:
-        result['home_away'] = 'away'
-        prefix = s[:at_match.start()]
-        result['opponent'] = s[at_match.end():].strip()
+        result["home_away"] = "away"
+        prefix = s[: at_match.start()]
+        result["opponent"] = s[at_match.end() :].strip()
     else:
         prefix = s
 
-    # Parse prefix for gender, level, sport
-    # Expected format: "[Gender] [Level] [Sport]"
     tokens = prefix.split()
 
-    # Gender detection
     gender_map = {
-        'boys': 'boys', 'boy': 'boys',
-        'girls': 'girls', 'girl': 'girls',
-        'coed': 'coed', 'co-ed': 'coed',
+        "boys": "boys",
+        "boy": "boys",
+        "girls": "girls",
+        "girl": "girls",
+        "coed": "coed",
+        "co-ed": "coed",
     }
     if tokens and tokens[0].lower() in gender_map:
-        result['gender'] = gender_map[tokens[0].lower()]
+        result["gender"] = gender_map[tokens[0].lower()]
         tokens = tokens[1:]
 
-    # Level detection via regex — handles JV, JVA, JV-A, JV-B, etc.
     level_patterns = [
-        (re.compile(r'^varsity$|^var$', re.I),           'varsity', 1),
-        (re.compile(r'^jv[- ]?[a-z0-9]*$', re.I),       'jv',      1),  # JV, JVA, JVB, JV-A, JV-B, JV1...
-        (re.compile(r'^junior$', re.I),                  'jv',      2),  # "Junior Varsity" (2 tokens)
-        (re.compile(r'^freshman$|^fr$|^frosh$', re.I),   'freshman',1),
-        (re.compile(r'^middle$|^ms$', re.I),             'ms',      1),  # "Middle" or "MS" (+ optional "School")
-        (re.compile(r'^[78]th$', re.I),                  'ms',      1),  # 7th/8th (+ optional "Grade")
+        (re.compile(r"^varsity$|^var$", re.I), "varsity", 1),
+        (re.compile(r"^jv[- ]?[a-z0-9]*$", re.I), "jv", 1),
+        (re.compile(r"^junior$", re.I), "jv", 2),
+        (re.compile(r"^freshman$|^fr$|^frosh$", re.I), "freshman", 1),
+        (re.compile(r"^middle$|^ms$", re.I), "ms", 1),
+        (re.compile(r"^[78]th$", re.I), "ms", 1),
     ]
     if tokens:
         for pattern, canonical, consume in level_patterns:
             if pattern.match(tokens[0]):
-                result['level'] = canonical
-                result['level_display'] = tokens[0]  # preserve original for display
+                result["level"] = canonical
+                result["level_display"] = tokens[0]
                 tokens = tokens[consume:]
-                # Consume paired second word where applicable, appending it to display
-                if canonical == 'ms' and tokens and tokens[0].lower() in ('school', 'grade'):
-                    result['level_display'] = f"{result['level_display']} {tokens[0]}"
+                if canonical == "ms" and tokens and tokens[0].lower() in ("school", "grade"):
+                    result["level_display"] = "%s %s" % (result["level_display"], tokens[0])
                     tokens = tokens[1:]
-                if canonical == 'jv' and consume == 2 and tokens and tokens[0].lower() == 'varsity':
+                if canonical == "jv" and consume == 2 and tokens and tokens[0].lower() == "varsity":
                     tokens = tokens[1:]
                 break
 
-    # Remaining tokens = sport name
-    result['sport'] = ' '.join(tokens).strip()
-
+    result["sport"] = " ".join(tokens).strip()
     return result
 
 
-def get_date_range(range_str: str, tz: ZoneInfo) -> tuple[datetime, datetime]:
+def get_date_range(range_str: str, tz: ZoneInfo) -> Tuple[datetime, datetime]:
     """Return (start, end) datetimes for a given range string."""
     now = datetime.now(tz)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
-    if range_str == 'today':
+    if range_str == "today":
         return today_start, today_start + timedelta(days=1)
-    elif range_str == 'tomorrow':
+    if range_str == "tomorrow":
         return today_start + timedelta(days=1), today_start + timedelta(days=2)
-    elif range_str == 'this-week':
-        # Monday to Sunday
+    if range_str == "this-week":
         start = today_start - timedelta(days=today_start.weekday())
         return start, start + timedelta(days=7)
-    elif range_str == 'next-week':
+    if range_str == "next-week":
         start = today_start - timedelta(days=today_start.weekday()) + timedelta(days=7)
         return start, start + timedelta(days=7)
-    elif range_str == 'this-weekend':
-        # Saturday and Sunday of this week
+    if range_str == "this-weekend":
         days_until_sat = 5 - today_start.weekday()
         if days_until_sat < 0:
             days_until_sat += 7
         sat = today_start + timedelta(days=days_until_sat)
         return sat, sat + timedelta(days=2)
-    elif range_str.startswith('next-'):
+    if range_str.startswith("next-"):
         try:
             n = int(range_str[5:])
             return today_start, today_start + timedelta(days=n)
         except ValueError:
             pass
     else:
-        # Try parsing as a date
         try:
-            d = datetime.strptime(range_str, '%Y-%m-%d').replace(tzinfo=tz)
+            d = datetime.strptime(range_str, "%Y-%m-%d").replace(tzinfo=tz)
             return d, d + timedelta(days=1)
         except ValueError:
             pass
 
-    # Default: next 7 days
     return today_start, today_start + timedelta(days=7)
 
 
@@ -204,85 +195,80 @@ def fuzzy_match(query: str, target: str) -> bool:
     return q in t or t in q
 
 
-def format_events(events: list[dict], team_name: str) -> str:
+def format_events(events: List[Dict[str, Any]], team_name: str) -> str:
     """Format events grouped by day."""
     if not events:
         return "No events found matching your filters."
 
-    # Group by date
-    by_date: dict[str, list] = {}
+    by_date: Dict[str, List[Dict[str, Any]]] = {}
     for ev in events:
-        dt = ev.get('_dt')
+        dt = ev.get("_dt")
         if dt:
-            key = dt.strftime('%A, %B %-d, %Y')
+            key = dt.strftime("%A, %B %-d, %Y")
         else:
-            key = 'TBD'
+            key = "TBD"
         by_date.setdefault(key, []).append(ev)
 
-    lines = [f"📅 {team_name} Schedule", f"{'─' * 40}"]
+    lines = ["📅 %s Schedule" % team_name, "%s" % ("─" * 40)]
 
     for date_label, day_events in by_date.items():
-        lines.append(f"\n**{date_label}**")
+        lines.append("\n**%s**" % date_label)
         for ev in day_events:
-            dt = ev.get('_dt')
-            info = ev.get('_parsed', {})
+            dt = ev.get("_dt")
+            info = ev.get("_parsed", {})
 
-            # Time
             if dt and dt.hour == 0 and dt.minute == 0:
-                time_str = 'TBD'
+                time_str = "TBD"
             elif dt:
-                time_str = dt.strftime('%-I:%M %p')
+                time_str = dt.strftime("%-I:%M %p")
             else:
-                time_str = 'TBD'
+                time_str = "TBD"
 
-            # Build event line
-            parts = []
-            if info.get('gender'):
-                parts.append(info['gender'].title())
-            if info.get('level'):
-                display = info.get('level_display', info['level'])
-                parts.append(display.upper())
-            if info.get('sport'):
-                parts.append(info['sport'].title())
+            parts: List[str] = []
+            if info.get("gender"):
+                parts.append(str(info["gender"]).title())
+            if info.get("level"):
+                display = info.get("level_display", info["level"])
+                parts.append(str(display).upper())
+            if info.get("sport"):
+                parts.append(str(info["sport"]).title())
 
-            sport_line = ' '.join(parts) if parts else info.get('raw', 'Event')
+            sport_line = " ".join(parts) if parts else str(info.get("raw", "Event"))
 
-            if info.get('opponent'):
-                direction = 'vs' if info.get('home_away') == 'home' else 'at'
-                sport_line += f" {direction} {info['opponent']}"
+            if info.get("opponent"):
+                direction = "vs" if info.get("home_away") == "home" else "at"
+                sport_line += " %s %s" % (direction, info["opponent"])
 
-            location = ev.get('LOCATION', '')
-            loc_str = f"  📍 {location}" if location else ''
+            location = ev.get("LOCATION", "")
+            loc_str = "  📍 %s" % location if location else ""
 
-            lines.append(f"  {time_str} — {sport_line}{loc_str}")
+            lines.append("  %s — %s%s" % (time_str, sport_line, loc_str))
 
-    lines.append(f"\n{'─' * 40}")
-    lines.append(f"Total: {len(events)} event(s)")
-    return '\n'.join(lines)
+    lines.append("\n%s" % ("─" * 40))
+    lines.append("Total: %d event(s)" % len(events))
+    return "\n".join(lines)
 
 
-def main():
-    parser = argparse.ArgumentParser(description='Fetch and filter ICS calendar events')
-    parser.add_argument('--ics-url', help='ICS feed URL')
-    parser.add_argument('--timezone', default='America/New_York', help='Display timezone')
-    parser.add_argument('--team-name', default='Miamisburg Vikings', help='Team display name')
-    parser.add_argument('--range', default='next-7', dest='date_range', help='Date range filter')
-    parser.add_argument('--home-away', default='all', choices=['home', 'away', 'all'])
-    parser.add_argument('--sport', default='', help='Sport name filter')
-    parser.add_argument('--level', default='all', choices=['varsity', 'jv', 'ms', 'freshman', 'all'])
-    parser.add_argument('--gender', default='all', choices=['boys', 'girls', 'coed', 'all'])
-    parser.add_argument('--config', help='Path to config.json')
-    parser.add_argument('--limit', type=int, default=50, help='Max events to show')
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Fetch and filter ICS calendar events")
+    parser.add_argument("--ics-url", help="ICS feed URL")
+    parser.add_argument("--timezone", default="America/New_York", help="Display timezone")
+    parser.add_argument("--team-name", default="Miamisburg Vikings", help="Team display name")
+    parser.add_argument("--range", default="next-7", dest="date_range", help="Date range filter")
+    parser.add_argument("--home-away", default="all", choices=["home", "away", "all"])
+    parser.add_argument("--sport", default="", help="Sport name filter")
+    parser.add_argument("--level", default="all", choices=["varsity", "jv", "ms", "freshman", "all"])
+    parser.add_argument("--gender", default="all", choices=["boys", "girls", "coed", "all"])
+    parser.add_argument("--config", help="Path to config.json")
+    parser.add_argument("--limit", type=int, default=50, help="Max events to show")
 
     args = parser.parse_args()
 
-    # Load config
-    config = {}
+    config: Dict[str, Any] = {}
     config_path = args.config
     if not config_path:
-        # Look for config relative to this script
         script_dir = os.path.dirname(os.path.abspath(__file__))
-        default_config = os.path.join(script_dir, '..', 'references', 'config.json')
+        default_config = os.path.join(script_dir, "..", "references", "config.json")
         if os.path.exists(default_config):
             config_path = default_config
 
@@ -290,9 +276,9 @@ def main():
         with open(config_path) as f:
             config = json.load(f)
 
-    ics_url = args.ics_url or config.get('ics_url', '')
-    timezone = args.timezone if args.timezone != 'America/New_York' else config.get('timezone', 'America/New_York')
-    team_name = args.team_name if args.team_name != 'Miamisburg Vikings' else config.get('team_name', 'Miamisburg Vikings')
+    ics_url = args.ics_url or config.get("ics_url", "")
+    timezone = args.timezone if args.timezone != "America/New_York" else config.get("timezone", "America/New_York")
+    team_name = args.team_name if args.team_name != "Miamisburg Vikings" else config.get("team_name", "Miamisburg Vikings")
 
     if not ics_url:
         print("Error: No ICS URL provided. Use --ics-url or set ics_url in config.json", file=sys.stderr)
@@ -300,58 +286,46 @@ def main():
 
     tz = ZoneInfo(timezone)
 
-    # Fetch ICS feed
     try:
-        req = urllib.request.Request(ics_url, headers={'User-Agent': 'ics-schedule/1.0'})
+        req = urllib.request.Request(ics_url, headers={"User-Agent": "ics-schedule/1.0"})
         with urllib.request.urlopen(req, timeout=30) as resp:
-            ics_text = resp.read().decode('utf-8', errors='replace')
+            ics_text = resp.read().decode("utf-8", errors="replace")
     except Exception as e:
-        print(f"Error fetching ICS feed: {e}", file=sys.stderr)
+        print("Error fetching ICS feed: %s" % e, file=sys.stderr)
         sys.exit(1)
 
-    # Parse events
     raw_events = parse_ics(ics_text)
 
-    # Parse datetimes and summaries
     for ev in raw_events:
-        ev['_dt'] = parse_dt(ev.get('DTSTART', ''), tz)
-        ev['_parsed'] = parse_summary(ev.get('SUMMARY', ''))
+        ev["_dt"] = parse_dt(ev.get("DTSTART", ""), tz)
+        ev["_parsed"] = parse_summary(ev.get("SUMMARY", ""))
 
-    # Filter by date range
     start_dt, end_dt = get_date_range(args.date_range, tz)
-    filtered = []
+    filtered: List[Dict[str, Any]] = []
     for ev in raw_events:
-        dt = ev.get('_dt')
+        dt = ev.get("_dt")
         if dt is None:
             continue
         if start_dt <= dt < end_dt:
             filtered.append(ev)
 
-    # Filter by home/away
-    if args.home_away != 'all':
-        filtered = [ev for ev in filtered if ev['_parsed'].get('home_away') == args.home_away]
+    if args.home_away != "all":
+        filtered = [ev for ev in filtered if ev["_parsed"].get("home_away") == args.home_away]
 
-    # Filter by sport
     if args.sport:
-        filtered = [ev for ev in filtered if fuzzy_match(args.sport, ev['_parsed'].get('sport', ''))]
+        filtered = [ev for ev in filtered if fuzzy_match(args.sport, ev["_parsed"].get("sport", ""))]
 
-    # Filter by level
-    if args.level != 'all':
-        filtered = [ev for ev in filtered if ev['_parsed'].get('level') == args.level]
+    if args.level != "all":
+        filtered = [ev for ev in filtered if ev["_parsed"].get("level") == args.level]
 
-    # Filter by gender
-    if args.gender != 'all':
-        filtered = [ev for ev in filtered if ev['_parsed'].get('gender') == args.gender]
+    if args.gender != "all":
+        filtered = [ev for ev in filtered if ev["_parsed"].get("gender") == args.gender]
 
-    # Sort by datetime
-    filtered.sort(key=lambda ev: ev.get('_dt') or datetime.min.replace(tzinfo=tz))
+    filtered.sort(key=lambda ev: ev.get("_dt") or datetime.min.replace(tzinfo=tz))
+    filtered = filtered[: args.limit]
 
-    # Limit
-    filtered = filtered[:args.limit]
-
-    # Format and print
     print(format_events(filtered, team_name))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

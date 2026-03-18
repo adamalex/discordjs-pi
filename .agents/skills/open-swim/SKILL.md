@@ -5,6 +5,7 @@ description: >-
   "pool schedule", "when can I swim", "YMCA swim times", "open swim hours",
   "pool hours", or mentions West Carrollton or Coffman YMCA swimming schedules.
   Fetches live Open Swim schedules from the Dayton YMCA website.
+license: MIT
 ---
 
 # Open Swim Schedule — Dayton YMCA

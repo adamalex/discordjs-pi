@@ -1,6 +1,7 @@
 ---
 name: ics-schedule
 description: "Fetch and display sports schedules from ICS calendar feeds with filtering. Use when the user asks about game schedules, upcoming games, sports events, match times, what games are this week, home games, when does a sport play, schedule for a team, or any athletics/sports schedule lookup. Supports filtering by date range, home/away, sport, level (varsity/jv/ms), and gender."
+license: MIT
 ---
 
 # ICS Schedule
@@ -12,7 +13,7 @@ Query sports schedules from an ICS calendar feed with flexible filtering.
 Run the fetch script to answer schedule queries:
 
 ```bash
-python3 scripts/fetch_events.py [options]
+python3 ${SKILL_DIR}/scripts/fetch_events.py [options]
 ```
 
 The script auto-loads config from `references/config.json` (ICS URL, timezone, team name).
