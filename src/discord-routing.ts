@@ -83,6 +83,53 @@ const SUPPORTED_IMAGE_TYPES = new Set([
 const MAX_IMAGE_SIZE = 20 * 1024 * 1024; // 20 MB
 
 /**
+ * Detect the actual MIME type of an image from its magic bytes.
+ * Falls back to the declared type if detection fails.
+ */
+function detectImageMimeType(buffer: Buffer, declaredType: string): string {
+  // Check magic bytes (file signatures)
+  if (buffer.length >= 8) {
+    // PNG: 89 50 4E 47 0D 0A 1A 0A
+    if (
+      buffer[0] === 0x89 &&
+      buffer[1] === 0x50 &&
+      buffer[2] === 0x4e &&
+      buffer[3] === 0x47
+    ) {
+      return "image/png";
+    }
+    // JPEG: FF D8 FF
+    if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+      return "image/jpeg";
+    }
+    // GIF: 47 49 46 38
+    if (
+      buffer[0] === 0x47 &&
+      buffer[1] === 0x49 &&
+      buffer[2] === 0x46 &&
+      buffer[3] === 0x38
+    ) {
+      return "image/gif";
+    }
+    // WebP: 52 49 46 46 ... 57 45 42 50
+    if (
+      buffer[0] === 0x52 &&
+      buffer[1] === 0x49 &&
+      buffer[2] === 0x46 &&
+      buffer[3] === 0x46 &&
+      buffer.length >= 12 &&
+      buffer[8] === 0x57 &&
+      buffer[9] === 0x45 &&
+      buffer[10] === 0x42 &&
+      buffer[11] === 0x50
+    ) {
+      return "image/webp";
+    }
+  }
+  return declaredType;
+}
+
+/**
  * Extract image attachments from a Discord message, download them,
  * and return them as base64-encoded ImageContent objects for the Pi SDK.
  */
@@ -105,10 +152,11 @@ export async function extractImages(message: Message<boolean>): Promise<ImageCon
         throw new Error(`Failed to download ${attachment.url}: ${response.status}`);
       }
       const buffer = Buffer.from(await response.arrayBuffer());
+      const actualMimeType = detectImageMimeType(buffer, attachment.contentType!);
       return {
         type: "image" as const,
         data: buffer.toString("base64"),
-        mimeType: attachment.contentType!,
+        mimeType: actualMimeType,
       };
     }),
   );
