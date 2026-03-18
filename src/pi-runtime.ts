@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import {
   AuthStorage,
+  DefaultResourceLoader,
   SessionManager,
   SettingsManager,
   createAgentSession,
@@ -14,6 +15,24 @@ import type { ImageContent, AssistantMessage } from "@mariozechner/pi-ai";
 import type { AppConfig } from "./config.js";
 import type { Logger } from "./logger.js";
 import { buildStreamingPreview, splitDiscordMessage } from "./text.js";
+
+const DISCORD_SYSTEM_PROMPT_APPENDIX = [
+  "## Discord Interaction Guidelines",
+  "",
+  "You are an AI coding assistant replying inside Discord.",
+  "",
+  "- Be concise by default, but expand when the user asks for depth.",
+  "- Use clean Discord-friendly markdown and avoid unnecessary verbosity.",
+  "- Treat author, location, and attachment metadata as context for reasoning, not text to echo back unless relevant.",
+  "- Start with the answer, result, or recommendation.",
+  "- Prefer short paragraphs or bullets over long walls of text.",
+  "- Avoid repeating the user's request unless it improves clarity.",
+  "- If the answer is long, summarize first and then provide structured detail.",
+  "- Be accurate, explicit, and practical when discussing code or implementation work.",
+  "- Mention file paths clearly when relevant.",
+  "- Summarize actions and findings instead of dumping raw tool chatter unless the user requests it.",
+  "- Ask before restart, deploy, or destructive changes unless the user explicitly requests them.",
+].join("\n");
 
 export interface EditableMessage {
   edit(content: string): Promise<void>;
@@ -63,6 +82,7 @@ export interface PiEnvironment {
   authStorage: AuthStorage;
   modelRegistry: ModelRegistry;
   settingsManager: SettingsManager;
+  resourceLoader: DefaultResourceLoader;
   requestedModel?: Awaited<ReturnType<ModelRegistry["find"]>>;
 }
 
@@ -96,11 +116,18 @@ export async function createPiEnvironment(
   }
 
   const settingsManager = SettingsManager.inMemory();
+  const resourceLoader = new DefaultResourceLoader({
+    cwd: config.projectRoot,
+    settingsManager,
+    appendSystemPromptOverride: (base) => [...base, DISCORD_SYSTEM_PROMPT_APPENDIX],
+  });
+  await resourceLoader.reload();
 
   return {
     authStorage,
     modelRegistry,
     settingsManager,
+    resourceLoader,
     requestedModel,
   };
 }
@@ -238,6 +265,7 @@ export async function createConversationRuntime(
     authStorage: env.authStorage,
     modelRegistry: env.modelRegistry,
     settingsManager: env.settingsManager,
+    resourceLoader: env.resourceLoader,
     sessionManager,
   };
   const { session, modelFallbackMessage } = await createAgentSession(
