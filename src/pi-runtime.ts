@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { Type, type Static } from "@sinclair/typebox";
 import {
   AuthStorage,
   DefaultResourceLoader,
@@ -9,6 +10,7 @@ import {
   type AgentSession,
   type AgentSessionEvent,
   type ModelRegistry,
+  type ToolDefinition,
 } from "@mariozechner/pi-coding-agent";
 import { ModelRegistry as PiModelRegistry } from "@mariozechner/pi-coding-agent";
 import type { ImageContent, AssistantMessage } from "@mariozechner/pi-ai";
@@ -38,10 +40,17 @@ export interface EditableMessage {
   edit(content: string): Promise<void>;
 }
 
+export interface FileAttachment {
+  path: string;
+  content?: string;
+  filename?: string;
+}
+
 export interface ResponseSink {
   sendTyping(): Promise<void>;
   createResponseMessage(initialContent: string): Promise<EditableMessage>;
   sendMessage(content: string): Promise<void>;
+  sendFileAttachment(attachment: FileAttachment): Promise<void>;
 }
 
 interface SessionLike {
@@ -52,6 +61,12 @@ interface SessionLike {
   followUp(text: string, images?: ImageContent[]): Promise<void>;
   abort(): Promise<void>;
   dispose(): void;
+}
+
+interface ProjectFileAttachmentRequest {
+  path: string;
+  message?: string;
+  filename?: string;
 }
 
 interface PendingJob {
@@ -259,6 +274,14 @@ export async function createConversationRuntime(
   const conversationDir = path.join(config.sessionRootDir, encodeConversationKey(conversationKey));
   await fs.mkdir(conversationDir, { recursive: true });
 
+  let worker: PiConversationWorker | null = null;
+  const discordAttachFileTool = createDiscordAttachFileTool(async (request) => {
+    if (!worker) {
+      throw new Error("Discord attachment runtime is not ready yet.");
+    }
+    return worker.sendProjectFileAttachment(request);
+  });
+
   const sessionManager = SessionManager.continueRecent(config.projectRoot, conversationDir);
   const createSessionOptions = {
     cwd: config.projectRoot,
@@ -267,6 +290,7 @@ export async function createConversationRuntime(
     settingsManager: env.settingsManager,
     resourceLoader: env.resourceLoader,
     sessionManager,
+    customTools: [discordAttachFileTool],
   };
   const { session, modelFallbackMessage } = await createAgentSession(
     env.requestedModel
@@ -289,7 +313,8 @@ export async function createConversationRuntime(
     sessionFile: session.sessionFile,
   });
 
-  return new PiConversationWorker(session, conversationKey, logger);
+  worker = new PiConversationWorker(session, conversationKey, logger, config.projectRoot);
+  return worker;
 }
 
 class PiConversationWorker implements ConversationRuntime {
@@ -304,6 +329,7 @@ class PiConversationWorker implements ConversationRuntime {
     private readonly session: SessionLike,
     private readonly conversationKey: string,
     private readonly logger: Logger,
+    private readonly projectRoot: string = process.cwd(),
   ) {
     this.sessionFile = session.sessionFile;
     this.unsubscribe = this.session.subscribe((event) => {
@@ -354,6 +380,17 @@ class PiConversationWorker implements ConversationRuntime {
     this.queuedJobs.length = 0;
     await this.session.abort();
     this.stopActiveJobTimers();
+  }
+
+  async sendProjectFileAttachment(
+    request: ProjectFileAttachmentRequest,
+  ): Promise<{ displayPath: string; filename: string }> {
+    const activeJob = this.activeJob;
+    if (!activeJob) {
+      throw new Error("No active Discord response is available for sending an attachment.");
+    }
+
+    return sendProjectFileAttachment(this.projectRoot, request, activeJob.sink);
   }
 
   dispose(): void {
@@ -650,6 +687,140 @@ function formatErrorMessage(error: unknown): string {
   return `Pi request failed: ${message}`;
 }
 
+const DISCORD_ATTACH_FILE_PARAMS = Type.Object({
+  path: Type.String({
+    description:
+      "Path to an existing file to attach. Prefer a path relative to the project root. Absolute paths are allowed only if they stay within the project root.",
+  }),
+  message: Type.Optional(
+    Type.String({
+      description: "Optional short Discord message to send together with the attachment.",
+    }),
+  ),
+  filename: Type.Optional(
+    Type.String({
+      description: "Optional filename to show in Discord. Defaults to the file's basename.",
+    }),
+  ),
+});
+
+type DiscordAttachFileParams = Static<typeof DISCORD_ATTACH_FILE_PARAMS>;
+
+function createDiscordAttachFileTool(
+  sendAttachment: (
+    request: ProjectFileAttachmentRequest,
+  ) => Promise<{ displayPath: string; filename: string }>,
+): ToolDefinition {
+  return {
+    name: "discord_attach_file",
+    label: "Discord Attach File",
+    description:
+      "Attach an existing local project file to the current Discord conversation. Use this only when the user explicitly asks for a file attachment.",
+    promptSnippet:
+      "Attach an existing local project file to the current Discord conversation when the user explicitly asks for it.",
+    promptGuidelines: [
+      "Use discord_attach_file only when the user explicitly asks you to attach or send a local file in Discord.",
+      "Do not use discord_attach_file automatically for long responses.",
+      "Only attach files that already exist inside the current project root.",
+    ],
+    parameters: DISCORD_ATTACH_FILE_PARAMS,
+    async execute(_toolCallId, rawParams) {
+      const params = rawParams as DiscordAttachFileParams;
+      const request: ProjectFileAttachmentRequest = {
+        path: params.path,
+      };
+      if (params.message) {
+        request.message = params.message;
+      }
+      if (params.filename) {
+        request.filename = params.filename;
+      }
+
+      const result = await sendAttachment(request);
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Attached ${result.displayPath} to Discord as ${result.filename}.`,
+          },
+        ],
+        details: result,
+      };
+    },
+  };
+}
+
+export async function sendProjectFileAttachment(
+  projectRoot: string,
+  request: ProjectFileAttachmentRequest,
+  sink: ResponseSink,
+): Promise<{ displayPath: string; filename: string }> {
+  const resolved = await resolveProjectFileAttachment(projectRoot, request.path, request.filename);
+  const attachment: FileAttachment = {
+    path: resolved.absolutePath,
+    filename: resolved.filename,
+  };
+  if (request.message) {
+    attachment.content = request.message;
+  }
+
+  await sink.sendFileAttachment(attachment);
+
+  return {
+    displayPath: resolved.displayPath,
+    filename: resolved.filename,
+  };
+}
+
+async function resolveProjectFileAttachment(
+  projectRoot: string,
+  inputPath: string,
+  requestedFilename?: string,
+): Promise<{ absolutePath: string; displayPath: string; filename: string }> {
+  const normalizedInput = inputPath.trim().replace(/^@/, "");
+  if (!normalizedInput) {
+    throw new Error("Attachment path cannot be empty.");
+  }
+
+  const absolutePath = path.isAbsolute(normalizedInput)
+    ? path.resolve(normalizedInput)
+    : path.resolve(projectRoot, normalizedInput);
+
+  const relativePath = path.relative(projectRoot, absolutePath);
+  if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
+    throw new Error("Only files inside the current project can be attached.");
+  }
+
+  const stat = await fs.stat(absolutePath).catch((error) => {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT") {
+      throw new Error(`File not found: ${formatProjectRelativePath(relativePath)}`);
+    }
+    throw error;
+  });
+
+  if (!stat.isFile()) {
+    throw new Error(`Not a file: ${formatProjectRelativePath(relativePath)}`);
+  }
+
+  const filename = requestedFilename?.trim() || path.basename(absolutePath);
+  if (!filename) {
+    throw new Error("Attachment filename cannot be empty.");
+  }
+
+  return {
+    absolutePath,
+    displayPath: formatProjectRelativePath(relativePath),
+    filename,
+  };
+}
+
+function formatProjectRelativePath(relativePath: string): string {
+  const normalized = relativePath.split(path.sep).join("/");
+  return normalized.startsWith(".") ? normalized : `./${normalized}`;
+}
+
 const TOOL_DETAIL_MAX_LENGTH = 120;
 
 function formatToolStartLine(toolName: string, args: Record<string, unknown> | undefined): string {
@@ -662,6 +833,7 @@ function formatToolStartLine(toolName: string, args: Record<string, unknown> | u
     case "read":
     case "edit":
     case "write":
+    case "discord_attach_file":
       detail = simplifyPaths(String(args?.path ?? ""));
       break;
     default:

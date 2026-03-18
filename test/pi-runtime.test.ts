@@ -1,9 +1,14 @@
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ConversationRegistry,
   createConversationWorkerForTests,
+  sendProjectFileAttachment,
   type ConversationRuntime,
   type EditableMessage,
+  type FileAttachment,
   type ResponseSink,
 } from "../src/pi-runtime.js";
 
@@ -33,6 +38,7 @@ class FakeEditableMessage implements EditableMessage {
 class FakeSink implements ResponseSink {
   readonly createdMessages: FakeEditableMessage[] = [];
   readonly sentMessages: string[] = [];
+  readonly sentFiles: FileAttachment[] = [];
   readonly typingCalls: number[] = [];
 
   async sendTyping(): Promise<void> {
@@ -47,6 +53,10 @@ class FakeSink implements ResponseSink {
 
   async sendMessage(content: string): Promise<void> {
     this.sentMessages.push(content);
+  }
+
+  async sendFileAttachment(attachment: FileAttachment): Promise<void> {
+    this.sentFiles.push(attachment);
   }
 }
 
@@ -207,5 +217,53 @@ describe("Pi conversation runtime queueing", () => {
     expect(sink.createdMessages[0]?.edits.at(-1)).toBe(
       ["Checking the repo", "", "```", "⚙️ read: ./src/pi-runtime.ts → ok", "```", "Done."].join("\n"),
     );
+  });
+});
+
+describe("sendProjectFileAttachment", () => {
+  it("sends an existing project file through the response sink", async () => {
+    const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), "discordjs-pi-attach-"));
+    const filePath = path.join(projectRoot, "notes", "ideas.md");
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    await fs.writeFile(filePath, "hello", "utf-8");
+
+    const sink = new FakeSink();
+    const result = await sendProjectFileAttachment(
+      projectRoot,
+      {
+        path: "notes/ideas.md",
+        message: "Requested file",
+      },
+      sink,
+    );
+
+    expect(result).toEqual({
+      displayPath: "./notes/ideas.md",
+      filename: "ideas.md",
+    });
+    expect(sink.sentFiles).toEqual([
+      {
+        path: filePath,
+        content: "Requested file",
+        filename: "ideas.md",
+      },
+    ]);
+  });
+
+  it("rejects attachment paths outside the project root", async () => {
+    const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), "discordjs-pi-attach-"));
+    const sink = new FakeSink();
+
+    await expect(
+      sendProjectFileAttachment(
+        projectRoot,
+        {
+          path: "../secret.txt",
+        },
+        sink,
+      ),
+    ).rejects.toThrow("Only files inside the current project can be attached.");
+
+    expect(sink.sentFiles).toEqual([]);
   });
 });

@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import {
+  AttachmentBuilder,
   Client,
   Events,
   GatewayIntentBits,
@@ -14,6 +15,7 @@ import {
   createConversationRuntime,
   createPiEnvironment,
   type EditableMessage,
+  type FileAttachment,
   type ResponseSink,
 } from "./pi-runtime.js";
 import {
@@ -58,6 +60,10 @@ class DiscordResponseSink implements ResponseSink {
   async sendMessage(content: string): Promise<void> {
     await getSendableChannel(this.message).send({ content });
   }
+
+  async sendFileAttachment(attachment: FileAttachment): Promise<void> {
+    await getSendableChannel(this.message).send(buildFileMessageOptions(attachment));
+  }
 }
 
 class ChannelResponseSink implements ResponseSink {
@@ -79,12 +85,16 @@ class ChannelResponseSink implements ResponseSink {
   async sendMessage(content: string): Promise<void> {
     await this.channel.send({ content });
   }
+
+  async sendFileAttachment(attachment: FileAttachment): Promise<void> {
+    await this.channel.send(buildFileMessageOptions(attachment));
+  }
 }
 
 /** A channel that supports send() and sendTyping(). Used by ChannelResponseSink for post-deploy resume. */
 interface SendableChannel {
   sendTyping(): Promise<void>;
-  send(options: { content: string }): Promise<Message>;
+  send(options: { content?: string; files?: readonly AttachmentBuilder[] }): Promise<Message>;
 }
 
 export class DiscordPiBot {
@@ -351,12 +361,34 @@ export class DiscordPiBot {
 
 function getSendableChannel(message: Message<boolean>): {
   sendTyping(): Promise<void>;
-  send(payload: { content: string }): Promise<Message<true>>;
+  send(payload: { content?: string; files?: readonly AttachmentBuilder[] }): Promise<Message<true>>;
 } {
   return message.channel as unknown as {
     sendTyping(): Promise<void>;
-    send(payload: { content: string }): Promise<Message<true>>;
+    send(payload: { content?: string; files?: readonly AttachmentBuilder[] }): Promise<Message<true>>;
   };
+}
+
+function buildFileMessageOptions(attachment: FileAttachment): {
+  content?: string;
+  files: AttachmentBuilder[];
+} {
+  const options: {
+    content?: string;
+    files: AttachmentBuilder[];
+  } = {
+    files: [
+      new AttachmentBuilder(attachment.path, {
+        name: attachment.filename ?? path.basename(attachment.path),
+      }),
+    ],
+  };
+
+  if (attachment.content) {
+    options.content = attachment.content;
+  }
+
+  return options;
 }
 
 function formatUptime(totalSeconds: number): string {

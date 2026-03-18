@@ -80,6 +80,7 @@ export const HELP_TEXT = [
   "**Pi Bot** — AI assistant powered by Pi",
   "",
   "Just send a message (text, images, or both) and I'll respond.",
+  "If you explicitly ask me to attach an existing local project file, I can send it as a Discord attachment.",
   "",
   "**Commands:**",
   "• `/status` — Bot uptime, model info, active sessions",
