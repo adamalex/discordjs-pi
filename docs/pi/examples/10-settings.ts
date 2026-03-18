@@ -1,0 +1,57 @@
+// Provenance
+//   Upstream: https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/examples/sdk/10-settings.ts
+//   Version:  0.58.4 (provisional — no pinned dependency in this repo yet)
+//   Retrieved: 2026-03-17
+//   Reason:   SettingsManager — overrides, persistence, flush, in-memory for testing
+
+/**
+ * Settings Configuration
+ *
+ * Override settings using SettingsManager.
+ */
+
+import { createAgentSession, SessionManager, SettingsManager } from "@mariozechner/pi-coding-agent";
+
+// Load current settings (merged global + project)
+const settingsManagerFromDisk = SettingsManager.create();
+console.log("Current settings:", JSON.stringify(settingsManagerFromDisk.getGlobalSettings(), null, 2));
+
+// Override specific settings
+const settingsManager = SettingsManager.create();
+settingsManager.applyOverrides({
+	compaction: { enabled: false },
+	retry: { enabled: true, maxRetries: 5, baseDelayMs: 1000 },
+});
+
+await createAgentSession({
+	settingsManager,
+	sessionManager: SessionManager.inMemory(),
+});
+
+console.log("Session created with custom settings");
+
+// Setters update memory immediately and queue persistence writes.
+// Call flush() when you need a durability boundary.
+settingsManager.setDefaultThinkingLevel("low");
+await settingsManager.flush();
+
+// Surface settings I/O errors at the app layer.
+const settingsErrors = settingsManager.drainErrors();
+if (settingsErrors.length > 0) {
+	for (const { scope, error } of settingsErrors) {
+		console.warn(`Warning (${scope} settings): ${error.message}`);
+	}
+}
+
+// For testing without file I/O:
+const inMemorySettings = SettingsManager.inMemory({
+	compaction: { enabled: false },
+	retry: { enabled: false },
+});
+
+await createAgentSession({
+	settingsManager: inMemorySettings,
+	sessionManager: SessionManager.inMemory(),
+});
+
+console.log("Test session created with in-memory settings");
