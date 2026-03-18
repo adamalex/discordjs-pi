@@ -567,7 +567,7 @@ function formatToolStartLine(toolName: string, args: Record<string, unknown> | u
 
   switch (toolName) {
     case "bash":
-      detail = truncateToolDetail(String(args?.command ?? ""));
+      detail = truncateToolDetail(simplifyBashCommand(String(args?.command ?? "")));
       break;
     case "read":
     case "edit":
@@ -581,11 +581,16 @@ function formatToolStartLine(toolName: string, args: Record<string, unknown> | u
   return detail ? `⚙️ ${toolName}: ${detail}` : `⚙️ ${toolName}`;
 }
 
+function simplifyBashCommand(cmd: string): string {
+  // Strip "cd /some/path && " prefixes — just noise in display.
+  return cmd.replace(/^cd\s+\S+\s*&&\s*/, "");
+}
+
 function truncateToolDetail(text: string): string {
   // Collapse to single line for display.
   const oneLine = text.replace(/\n/g, " ").trim();
   if (oneLine.length <= TOOL_DETAIL_MAX_LENGTH) return oneLine;
-  return oneLine.slice(0, TOOL_DETAIL_MAX_LENGTH - 1) + "…";
+  return oneLine.slice(0, TOOL_DETAIL_MAX_LENGTH - 3) + "...";
 }
 
 export type { AgentSession };
