@@ -305,8 +305,16 @@ class PiConversationWorker implements ConversationRuntime {
 
     switch (event.type) {
       case "agent_start":
+        await this.ensureActiveJob();
+        return;
       case "message_start":
         await this.ensureActiveJob();
+        // When a new assistant message starts and we already have accumulated text
+        // (i.e., after tool calls), insert a paragraph break so the text blocks
+        // don't get smashed together in the final Discord message.
+        if (this.activeJob && this.activeJob.accumulatedText.length > 0) {
+          this.activeJob.accumulatedText += "\n\n";
+        }
         return;
       case "message_update":
         await this.ensureActiveJob();
