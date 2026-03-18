@@ -24,7 +24,7 @@ import {
   isDmMessage,
 } from "./discord-routing.js";
 import {
-  registerGuildCommands,
+  clearGuildCommands,
   registerGlobalCommands,
   HELP_TEXT,
 } from "./commands.js";
@@ -230,15 +230,15 @@ export class DiscordPiBot {
   private async registerSlashCommands(client: Client<true>): Promise<void> {
     const clientId = client.user.id;
 
-    // Register guild-scoped commands (instant propagation) for all guilds
+    // Clear any guild-scoped commands to avoid duplicates with global commands
     const guildIds = client.guilds.cache.map((g) => g.id);
     await Promise.all(
       guildIds.map((guildId) =>
-        registerGuildCommands(clientId, guildId, this.config.discordToken, this.logger),
+        clearGuildCommands(clientId, guildId, this.config.discordToken, this.logger),
       ),
     );
 
-    // Also register global commands so they work in DMs
+    // Register global commands (work in both guilds and DMs)
     await registerGlobalCommands(clientId, this.config.discordToken, this.logger);
   }
 

@@ -30,24 +30,23 @@ export const helpCommand = new SlashCommandBuilder()
 export const allCommands = [statusCommand, resetCommand, resetAllCommand, helpCommand];
 
 /**
- * Register slash commands for a specific guild.
+ * Clear all guild-scoped slash commands (to remove duplicates with global commands).
  */
-export async function registerGuildCommands(
+export async function clearGuildCommands(
   clientId: string,
   guildId: string,
   token: string,
   logger: Logger,
 ): Promise<void> {
   const rest = new REST({ version: "10" }).setToken(token);
-  const commandData = allCommands.map((cmd) => cmd.toJSON());
 
   try {
     await rest.put(Routes.applicationGuildCommands(clientId, guildId), {
-      body: commandData,
+      body: [],
     });
-    logger.info(`Registered ${commandData.length} slash commands for guild ${guildId}`);
+    logger.info(`Cleared guild-scoped slash commands for guild ${guildId}`);
   } catch (error) {
-    logger.error("Failed to register slash commands", {
+    logger.error("Failed to clear guild slash commands", {
       guildId,
       error: error instanceof Error ? error.message : String(error),
     });
