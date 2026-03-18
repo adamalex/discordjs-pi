@@ -585,7 +585,7 @@ function formatToolStartLine(toolName: string, args: Record<string, unknown> | u
     case "read":
     case "edit":
     case "write":
-      detail = String(args?.path ?? "");
+      detail = simplifyPaths(String(args?.path ?? ""));
       break;
     default:
       break;
