@@ -356,40 +356,10 @@ class PiConversationWorker implements ConversationRuntime {
         }
         return;
       case "tool_execution_start":
-        await this.ensureActiveJob();
-        if (this.activeJob) {
-          // Clear separator flag — consecutive tools merge into one code fence.
-          this.activeJob.needsSeparator = false;
-          if (!this.activeJob.insideToolBlock) {
-            // Open a new fenced code block for tool calls.
-            if (this.activeJob.accumulatedText.length > 0) {
-              this.activeJob.accumulatedText = this.activeJob.accumulatedText.trimEnd() + "\n\n";
-            }
-            this.activeJob.accumulatedText += "```\n";
-            this.activeJob.insideToolBlock = true;
-          }
-          const line = formatToolStartLine(event.toolName, event.args);
-          this.activeJob.pendingToolLines.push(line);
-          this.activeJob.accumulatedText += line + "\n";
-          this.scheduleFlush();
-        }
+        // Tool output display temporarily disabled
         return;
       case "tool_execution_end":
-        if (this.activeJob) {
-          const status = event.isError ? "error" : "ok";
-          const pending = this.activeJob.pendingToolLines.shift();
-          if (pending) {
-            // Find the pending line and replace with completed version
-            const idx = this.activeJob.accumulatedText.indexOf(pending + "\n");
-            if (idx !== -1) {
-              this.activeJob.accumulatedText =
-                this.activeJob.accumulatedText.slice(0, idx) +
-                `${pending} → ${status}\n` +
-                this.activeJob.accumulatedText.slice(idx + pending.length + 1);
-            }
-          }
-          this.scheduleFlush();
-        }
+        // Tool output display temporarily disabled
         return;
       case "agent_end":
         if (this.activeJob) {
