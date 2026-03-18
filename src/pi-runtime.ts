@@ -40,7 +40,7 @@ interface PendingJob {
 }
 
 interface ActiveJob extends PendingJob {
-  responseMessage: EditableMessage;
+  responseMessage: EditableMessage | null;
   accumulatedText: string;
   lastPublishedText?: string;
   typingInterval: NodeJS.Timeout | null;
@@ -341,7 +341,6 @@ class PiConversationWorker implements ConversationRuntime {
   }
 
   private async activateNextJob(job: PendingJob): Promise<void> {
-    const responseMessage = await job.sink.createResponseMessage("_Thinking..._");
     const typingInterval = setInterval(() => {
       void job.sink.sendTyping().catch((error) => {
         this.logger.warn("Failed to send typing indicator", error);
@@ -354,7 +353,7 @@ class PiConversationWorker implements ConversationRuntime {
 
     this.activeJob = {
       ...job,
-      responseMessage,
+      responseMessage: null,
       accumulatedText: "",
       flushTimer: null,
       typingInterval,
@@ -386,7 +385,14 @@ class PiConversationWorker implements ConversationRuntime {
       ? splitDiscordMessage(activeJob.accumulatedText)[0]
       : buildStreamingPreview(activeJob.accumulatedText);
 
-    if (nextText && nextText !== activeJob.lastPublishedText) {
+    if (!nextText || nextText === activeJob.lastPublishedText) {
+      return;
+    }
+
+    if (!activeJob.responseMessage) {
+      activeJob.responseMessage = await activeJob.sink.createResponseMessage(nextText);
+      activeJob.lastPublishedText = nextText;
+    } else {
       await activeJob.responseMessage.edit(nextText);
       activeJob.lastPublishedText = nextText;
     }
@@ -417,7 +423,13 @@ class PiConversationWorker implements ConversationRuntime {
 
     this.stopActiveJobTimers();
     const message = formatErrorMessage(error);
-    await activeJob.responseMessage.edit(message).catch(() => undefined);
+
+    if (activeJob.responseMessage) {
+      await activeJob.responseMessage.edit(message).catch(() => undefined);
+    } else {
+      await activeJob.sink.createResponseMessage(message).catch(() => undefined);
+    }
+
     this.activeJob = null;
   }
 
