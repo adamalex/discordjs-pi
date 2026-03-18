@@ -7,6 +7,10 @@ import {
   SessionManager,
   SettingsManager,
   createAgentSession,
+  createCodingTools,
+  createFindTool,
+  createGrepTool,
+  createLsTool,
   type AgentSession,
   type AgentSessionEvent,
   type ModelRegistry,
@@ -294,6 +298,12 @@ export async function createConversationRuntime(
     settingsManager: env.settingsManager,
     resourceLoader: env.resourceLoader,
     sessionManager,
+    tools: [
+      ...createCodingTools(config.projectRoot),
+      createGrepTool(config.projectRoot),
+      createFindTool(config.projectRoot),
+      createLsTool(config.projectRoot),
+    ],
     customTools: [discordAttachFileTool],
   };
   const { session, modelFallbackMessage } = await createAgentSession(
