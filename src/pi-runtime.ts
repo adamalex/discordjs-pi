@@ -342,6 +342,24 @@ class PiConversationWorker implements ConversationRuntime {
           this.scheduleFlush();
         }
         return;
+      case "tool_execution_start":
+        await this.ensureActiveJob();
+        if (this.activeJob) {
+          const line = formatToolStartLine(event.toolName, event.args);
+          if (this.activeJob.accumulatedText.length > 0) {
+            this.activeJob.accumulatedText = this.activeJob.accumulatedText.trimEnd() + "\n";
+          }
+          this.activeJob.accumulatedText += line;
+          this.scheduleFlush();
+        }
+        return;
+      case "tool_execution_end":
+        if (this.activeJob) {
+          const status = event.isError ? "error" : "ok";
+          this.activeJob.accumulatedText += ` → ${status}\n`;
+          this.scheduleFlush();
+        }
+        return;
       case "agent_end":
         await this.finalizeActiveJob();
         return;
@@ -511,6 +529,34 @@ async function countFilesByExtension(dirPath: string, extension: string): Promis
 function formatErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : "Unknown error";
   return `Pi request failed: ${message}`;
+}
+
+const TOOL_DETAIL_MAX_LENGTH = 120;
+
+function formatToolStartLine(toolName: string, args: Record<string, unknown> | undefined): string {
+  let detail = "";
+
+  switch (toolName) {
+    case "bash":
+      detail = truncateToolDetail(String(args?.command ?? ""));
+      break;
+    case "read":
+    case "edit":
+    case "write":
+      detail = String(args?.path ?? "");
+      break;
+    default:
+      break;
+  }
+
+  return detail ? `⚙️ \`${toolName}\` ${detail}` : `⚙️ \`${toolName}\``;
+}
+
+function truncateToolDetail(text: string): string {
+  // Collapse to single line for display.
+  const oneLine = text.replace(/\n/g, " ").trim();
+  if (oneLine.length <= TOOL_DETAIL_MAX_LENGTH) return oneLine;
+  return oneLine.slice(0, TOOL_DETAIL_MAX_LENGTH - 1) + "…";
 }
 
 export type { AgentSession };
