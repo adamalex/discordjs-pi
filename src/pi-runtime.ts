@@ -150,6 +150,8 @@ export async function createPiEnvironment(
   }
 
   const settingsManager = SettingsManager.inMemory();
+  settingsManager.setDefaultThinkingLevel("high");
+
   const resourceLoader = new DefaultResourceLoader({
     cwd: config.projectRoot,
     settingsManager,
