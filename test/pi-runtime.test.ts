@@ -9,6 +9,9 @@ import {
 
 interface SessionEvent {
   type: string;
+  toolName?: string;
+  args?: Record<string, unknown>;
+  isError?: boolean;
   assistantMessageEvent?: {
     type: string;
     delta?: string;
@@ -160,5 +163,49 @@ describe("Pi conversation runtime queueing", () => {
     await Promise.resolve();
 
     expect(secondSink.createdMessages[0]?.edits.at(-1)).toBe("second response");
+  });
+
+  it("renders tool execution lines inline with the streamed response", async () => {
+    const session = new FakeSession();
+    const logger = { debug() {}, info() {}, warn() {}, error() {} } as never;
+    const worker = createConversationWorkerForTests(
+      session as never,
+      "channel:guild:channel",
+      logger,
+    );
+
+    const sink = new FakeSink();
+    await worker.handlePrompt("first", sink);
+
+    session.emit({
+      type: "message_update",
+      assistantMessageEvent: { type: "text_delta", delta: "Checking the repo" },
+    });
+    await vi.advanceTimersByTimeAsync(600);
+
+    session.emit({
+      type: "tool_execution_start",
+      toolName: "read",
+      args: { path: "/Users/adam/Projects/discordjs-pi/src/pi-runtime.ts" },
+    });
+    await vi.advanceTimersByTimeAsync(600);
+
+    session.emit({
+      type: "tool_execution_end",
+      toolName: "read",
+      isError: false,
+    });
+    session.emit({ type: "message_start" });
+    session.emit({
+      type: "message_update",
+      assistantMessageEvent: { type: "text_delta", delta: "Done." },
+    });
+    await vi.advanceTimersByTimeAsync(600);
+    session.emit({ type: "agent_end" });
+    await Promise.resolve();
+
+    expect(sink.createdMessages[0]?.edits.at(-1)).toBe(
+      ["Checking the repo", "", "```", "⚙️ read: ./src/pi-runtime.ts → ok", "```", "Done."].join("\n"),
+    );
   });
 });
