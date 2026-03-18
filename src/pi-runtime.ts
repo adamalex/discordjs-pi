@@ -47,7 +47,7 @@ interface ActiveJob extends PendingJob {
   flushTimer: NodeJS.Timeout | null;
   insideToolBlock: boolean;
   needsSeparator: boolean;
-  pendingToolLine?: string | undefined;
+  pendingToolLines: string[];
 }
 
 export interface ConversationRuntime {
@@ -367,28 +367,25 @@ class PiConversationWorker implements ConversationRuntime {
             this.activeJob.insideToolBlock = true;
           }
           const line = formatToolStartLine(event.toolName, event.args);
-          this.activeJob.pendingToolLine = line;
-          this.activeJob.accumulatedText += line;
+          this.activeJob.pendingToolLines.push(line);
+          this.activeJob.accumulatedText += line + "\n";
           this.scheduleFlush();
         }
         return;
       case "tool_execution_end":
         if (this.activeJob) {
           const status = event.isError ? "error" : "ok";
-          // Replace the pending tool line with the completed version (line + result on same line)
-          if (this.activeJob.pendingToolLine) {
-            const completed = `${this.activeJob.pendingToolLine} → ${status}`;
-            const pending = this.activeJob.pendingToolLine;
-            const lastIdx = this.activeJob.accumulatedText.lastIndexOf(pending);
-            if (lastIdx !== -1) {
+          const pending = this.activeJob.pendingToolLines.shift();
+          if (pending) {
+            // Find the pending line and replace with completed version
+            const idx = this.activeJob.accumulatedText.indexOf(pending + "\n");
+            if (idx !== -1) {
               this.activeJob.accumulatedText =
-                this.activeJob.accumulatedText.slice(0, lastIdx) +
-                completed +
-                this.activeJob.accumulatedText.slice(lastIdx + pending.length);
+                this.activeJob.accumulatedText.slice(0, idx) +
+                `${pending} → ${status}\n` +
+                this.activeJob.accumulatedText.slice(idx + pending.length + 1);
             }
-            this.activeJob.pendingToolLine = undefined;
           }
-          this.activeJob.accumulatedText += "\n";
           this.scheduleFlush();
         }
         return;
@@ -435,6 +432,7 @@ class PiConversationWorker implements ConversationRuntime {
       typingInterval,
       insideToolBlock: false,
       needsSeparator: false,
+      pendingToolLines: [],
     };
   }
 
