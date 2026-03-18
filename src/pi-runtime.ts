@@ -10,6 +10,7 @@ import {
   type ModelRegistry,
 } from "@mariozechner/pi-coding-agent";
 import { ModelRegistry as PiModelRegistry } from "@mariozechner/pi-coding-agent";
+import type { ImageContent } from "@mariozechner/pi-ai";
 import type { AppConfig } from "./config.js";
 import type { Logger } from "./logger.js";
 import { buildStreamingPreview, splitDiscordMessage } from "./text.js";
@@ -28,14 +29,15 @@ interface SessionLike {
   readonly isStreaming: boolean;
   readonly sessionFile: string | undefined;
   subscribe(listener: (event: AgentSessionEvent) => void): () => void;
-  prompt(text: string): Promise<void>;
-  followUp(text: string): Promise<void>;
+  prompt(text: string, options?: { images?: ImageContent[] }): Promise<void>;
+  followUp(text: string, images?: ImageContent[]): Promise<void>;
   abort(): Promise<void>;
   dispose(): void;
 }
 
 interface PendingJob {
   readonly text: string;
+  readonly images?: ImageContent[] | undefined;
   readonly sink: ResponseSink;
 }
 
@@ -52,7 +54,7 @@ interface ActiveJob extends PendingJob {
 
 export interface ConversationRuntime {
   readonly sessionFile: string | undefined;
-  handlePrompt(text: string, sink: ResponseSink): Promise<void>;
+  handlePrompt(text: string, sink: ResponseSink, images?: ImageContent[]): Promise<void>;
   abort(): Promise<void>;
   dispose(): void;
 }
@@ -118,11 +120,11 @@ export class ConversationRegistry {
     await fs.mkdir(this.sessionRootDir, { recursive: true });
   }
 
-  async handlePrompt(conversationKey: string, text: string, sink: ResponseSink): Promise<void> {
+  async handlePrompt(conversationKey: string, text: string, sink: ResponseSink, images?: ImageContent[]): Promise<void> {
     this.lastActiveConversationKey = conversationKey;
     void this.persistLastActiveConversation(conversationKey);
     const runtime = await this.getOrCreateRuntime(conversationKey);
-    await runtime.handlePrompt(text, sink);
+    await runtime.handlePrompt(text, sink, images);
   }
 
   private get lastActiveConversationPath(): string {
@@ -266,17 +268,17 @@ class PiConversationWorker implements ConversationRuntime {
     });
   }
 
-  async handlePrompt(text: string, sink: ResponseSink): Promise<void> {
+  async handlePrompt(text: string, sink: ResponseSink, images?: ImageContent[]): Promise<void> {
     if (this.shuttingDown) {
       throw new Error("Conversation runtime is shutting down.");
     }
 
     if (this.activeJob || this.session.isStreaming) {
-      const queuedJob: PendingJob = { text, sink };
+      const queuedJob: PendingJob = { text, images, sink };
       this.queuedJobs.push(queuedJob);
 
       try {
-        await this.session.followUp(text);
+        await this.session.followUp(text, images);
         this.logger.debug("Queued Pi follow-up", {
           conversationKey: this.conversationKey,
           queuedCount: this.queuedJobs.length,
@@ -292,10 +294,10 @@ class PiConversationWorker implements ConversationRuntime {
       return;
     }
 
-    await this.activateNextJob({ text, sink });
+    await this.activateNextJob({ text, images, sink });
 
     try {
-      await this.session.prompt(text);
+      await this.session.prompt(text, images?.length ? { images } : undefined);
     } catch (error) {
       await this.failActiveJob(error);
       throw error;

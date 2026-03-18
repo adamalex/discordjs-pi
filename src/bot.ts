@@ -17,6 +17,7 @@ import {
 } from "./pi-runtime.js";
 import {
   deriveConversationKey,
+  extractImages,
   formatPromptInput,
   isDmMessage,
   parseDmCommand,
@@ -228,9 +229,12 @@ export class DiscordPiBot {
       }
     }
 
-    if (!trimmedContent) {
+    const images = await extractImages(message);
+    const hasImages = images.length > 0;
+
+    if (!trimmedContent && !hasImages) {
       await getSendableChannel(message).send({
-        content: "This bot is text-only right now. Send plain text messages.",
+        content: "Send a text message, an image, or both.",
       });
       return;
     }
@@ -240,7 +244,7 @@ export class DiscordPiBot {
     const sink = new DiscordResponseSink(message);
 
     try {
-      await this.registry.handlePrompt(conversationKey, prompt, sink);
+      await this.registry.handlePrompt(conversationKey, prompt, sink, hasImages ? images : undefined);
     } catch (error) {
       this.logger.error("Failed to handle Discord message with Pi", {
         conversationKey,

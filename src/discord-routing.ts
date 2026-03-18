@@ -1,4 +1,5 @@
-import type { Message } from "discord.js";
+import type { Message, Attachment } from "discord.js";
+import type { ImageContent } from "@mariozechner/pi-ai";
 
 export type DmCommand = "status" | "reset-all";
 
@@ -37,13 +38,23 @@ export function formatPromptInput(message: Message<boolean>): string {
     message.member?.displayName ?? message.author.globalName ?? message.author.username;
   const location = describeLocation(message);
 
-  return [
+  const imageAttachmentCount = message.attachments.filter(
+    (a) => a.contentType !== null && a.contentType.startsWith("image/"),
+  ).size;
+
+  const lines = [
     "Discord message received.",
     `Author: ${authorName} (@${message.author.username}, id ${message.author.id})`,
     `Location: ${location}`,
-    "",
-    message.content.trim(),
-  ].join("\n");
+  ];
+
+  if (imageAttachmentCount > 0) {
+    lines.push(`Attachments: ${imageAttachmentCount} image(s) (included inline below)`);
+  }
+
+  lines.push("", message.content.trim());
+
+  return lines.join("\n");
 }
 
 function describeLocation(message: Message<boolean>): string {
@@ -60,4 +71,49 @@ function describeLocation(message: Message<boolean>): string {
   }
 
   return `${message.guild?.name ?? message.guildId} / channel ${message.channelId}`;
+}
+
+const SUPPORTED_IMAGE_TYPES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/gif",
+  "image/webp",
+]);
+
+const MAX_IMAGE_SIZE = 20 * 1024 * 1024; // 20 MB
+
+/**
+ * Extract image attachments from a Discord message, download them,
+ * and return them as base64-encoded ImageContent objects for the Pi SDK.
+ */
+export async function extractImages(message: Message<boolean>): Promise<ImageContent[]> {
+  const imageAttachments = message.attachments.filter(
+    (a): a is Attachment =>
+      a.contentType !== null &&
+      SUPPORTED_IMAGE_TYPES.has(a.contentType) &&
+      (a.size ?? Infinity) <= MAX_IMAGE_SIZE,
+  );
+
+  if (imageAttachments.size === 0) {
+    return [];
+  }
+
+  const results = await Promise.allSettled(
+    imageAttachments.map(async (attachment) => {
+      const response = await fetch(attachment.url);
+      if (!response.ok) {
+        throw new Error(`Failed to download ${attachment.url}: ${response.status}`);
+      }
+      const buffer = Buffer.from(await response.arrayBuffer());
+      return {
+        type: "image" as const,
+        data: buffer.toString("base64"),
+        mimeType: attachment.contentType!,
+      };
+    }),
+  );
+
+  return results
+    .filter((r): r is PromiseFulfilledResult<ImageContent> => r.status === "fulfilled")
+    .map((r) => r.value);
 }
