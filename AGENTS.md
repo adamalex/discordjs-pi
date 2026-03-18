@@ -56,11 +56,13 @@ If running directly via `npm start` / `tsx src/index.ts`, `self-deploy.sh` now f
 - The health file (`.data/healthy`) is written by `src/bot.ts` when Discord connection succeeds
 - After a restart, you are a fresh session — you will NOT remember the previous conversation
 
-### DM Commands
+### Slash Commands
 
-Users can send these in DMs:
-- `!status` — bot uptime, model info, active conversations
-- `!reset-all` — wipe all conversation state and session files
+Users can use these slash commands in Discord:
+- `/status` — bot uptime, model info, active conversations
+- `/reset` — reset the conversation in this channel or DM
+- `/reset-all` — wipe all conversation state and session files (admin only)
+- `/help` — show the command/help summary
 
 ## Project Layout
 

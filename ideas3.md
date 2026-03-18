@@ -2,31 +2,15 @@
 
 ## Current State
 
-The bot is a message-based Discord↔Pi bridge: it receives Discord messages, forwards them as prompts to persistent Pi agent sessions (one per conversation key), streams text deltas back, and splits long responses across multiple Discord messages. It supports DMs, guild channels, and threads, with two admin commands (`!status`, `!reset-all`). Tool execution is surfaced inline during streaming.
+The bot is a message-based Discord↔Pi bridge: it receives Discord messages, forwards them as prompts to persistent Pi agent sessions (one per conversation key), streams text deltas back, and splits long responses across multiple Discord messages. It supports DMs, guild channels, and threads. Discord slash commands (`/status`, `/reset`, `/reset-all`, `/help`) provide discoverable interaction UX. Per-conversation reset is supported. Tool execution is surfaced inline during streaming.
 
-The largest unused capability areas are: Discord-native interaction UX (slash commands, buttons, modals), Pi resource customization (extensions, custom tools, system prompt overrides), multimodal input handling, and advanced Pi session controls (branching, compaction, model switching).
+The largest unused capability areas are: Pi resource customization (extensions, custom tools, system prompt overrides), multimodal input handling, advanced Discord UX (buttons, modals, threads), and advanced Pi session controls (branching, compaction, model switching).
 
 ---
 
 ## Ideas
 
-### 1. Slash Commands & Discord Interactions
-
-Replace or supplement `!status` / `!reset-all` with proper Discord slash commands and add new ones. Slash commands are discoverable (autocomplete), self-documenting, and the officially recommended interaction model.
-
-**Possible commands:**
-- `/status` — bot uptime, model, active sessions
-- `/reset` — reset the current conversation (scoped to channel/DM)
-- `/reset-all` — admin-only global reset
-- `/model` — show or switch the active model/thinking level
-- `/compact` — trigger manual session compaction
-- `/help` — explain what the bot can do
-
-**Surfaces:** `SlashCommandBuilder`, `REST`/`Routes` deployment, `InteractionCreate` handler, `ChatInputCommandInteraction`, `session.compact()`, `session.setModel()`, `session.cycleThinkingLevel()`
-
----
-
-### 2. Image Input Support
+### 1. Image Input Support
 
 Accept image attachments and URL embeds from Discord messages and forward them to Pi as base64-encoded images. Pi's `prompt()` already accepts an `images` option. The bot currently rejects non-text input.
 
@@ -34,15 +18,7 @@ Accept image attachments and URL embeds from Discord messages and forward them t
 
 ---
 
-### 3. Per-Conversation Reset
-
-Allow resetting a single conversation without nuking all state. `!reset-all` is a sledgehammer — users in one channel shouldn't lose context because of another channel.
-
-**Implementation:** Add `reset(conversationKey)` to `ConversationRegistry`, abort and dispose the single runtime, delete/archive that session directory. Pi SDK supports `session.newSession()`.
-
----
-
-### 4. Custom System Prompt / Context Injection
+### 2. Custom System Prompt / Context Injection
 
 Use `DefaultResourceLoader` with `systemPromptOverride` or `appendSystemPromptOverride` to inject Discord-specific context. The default Pi system prompt is designed for a CLI coding assistant, not a Discord bot.
 
@@ -54,7 +30,7 @@ Use `DefaultResourceLoader` with `systemPromptOverride` or `appendSystemPromptOv
 
 ---
 
-### 5. Thread-per-Conversation Mode
+### 3. Thread-per-Conversation Mode
 
 When the bot receives a message in a regular guild channel, automatically create a thread for the conversation instead of replying inline. Long agent conversations clutter a channel; threads keep them contained.
 
@@ -62,7 +38,7 @@ When the bot receives a message in a regular guild channel, automatically create
 
 ---
 
-### 6. Button-Based Interactions
+### 4. Button-Based Interactions
 
 Add interactive buttons for common actions on bot responses to reduce friction.
 
@@ -76,7 +52,7 @@ Add interactive buttons for common actions on bot responses to reduce friction.
 
 ---
 
-### 7. Multi-Model / Thinking Level Controls
+### 5. Multi-Model / Thinking Level Controls
 
 Let users or admins switch models or thinking levels per conversation. Different tasks benefit from different models.
 
@@ -89,7 +65,7 @@ Let users or admins switch models or thinking levels per conversation. Different
 
 ---
 
-### 8. Streaming Preview Improvements
+### 6. Streaming Preview Improvements
 
 Improve visual quality of streaming responses. The current preview clips from the tail which can break mid-word or mid-code-block.
 
@@ -99,7 +75,7 @@ Improve visual quality of streaming responses. The current preview clips from th
 
 ---
 
-### 9. File Attachment Responses
+### 7. File Attachment Responses
 
 When Pi produces large outputs, attach them as files rather than splitting across many messages. A 10,000-character output split into 5+ messages is noisy.
 
@@ -107,7 +83,7 @@ When Pi produces large outputs, attach them as files rather than splitting acros
 
 ---
 
-### 10. Compaction & Session Lifecycle
+### 8. Compaction & Session Lifecycle
 
 Improve session lifecycle management for long-running conversations.
 
@@ -119,7 +95,7 @@ Improve session lifecycle management for long-running conversations.
 
 ---
 
-### 11. Permissions and Access Control
+### 9. Permissions and Access Control
 
 Add role-based or user-based access control for bot interactions.
 
@@ -131,7 +107,7 @@ Add role-based or user-based access control for bot interactions.
 
 ---
 
-### 12. Rich Embeds for Structured Output
+### 10. Rich Embeds for Structured Output
 
 Detect structured output patterns (code blocks, errors, tool results) and render them using Discord embeds. Embeds support up to 6000 characters with colored sidebars, titles, and footers.
 
@@ -143,7 +119,7 @@ Detect structured output patterns (code blocks, errors, tool results) and render
 
 ---
 
-### 13. Session Branching / Fork
+### 11. Session Branching / Fork
 
 Let users fork a conversation at a previous point, creating a branch without losing the original thread. Pi SDK has rich session tree support.
 
@@ -153,7 +129,7 @@ Let users fork a conversation at a previous point, creating a branch without los
 
 ---
 
-### 14. Discord-Aware Pi Extensions & Custom Tools
+### 12. Discord-Aware Pi Extensions & Custom Tools
 
 Write a Pi extension giving the agent awareness of Discord-specific capabilities. Register custom tools the agent can invoke proactively.
 
@@ -172,17 +148,15 @@ Write a Pi extension giving the agent awareness of Discord-specific capabilities
 
 | Priority | Idea | Effort | Impact |
 |----------|------|--------|--------|
-| 🔴 High | 4. Custom system prompt | Small | Big quality-of-life improvement for all responses |
-| 🔴 High | 2. Image input | Small | Unlocks a whole input modality already supported by Pi |
-| 🔴 High | 3. Per-conversation reset | Small | Basic missing functionality |
-| 🟡 Medium | 1. Slash commands | Medium | Proper Discord UX, discoverable features |
-| 🟡 Medium | 8. Streaming preview improvements | Small | Polish |
-| 🟡 Medium | 5. Thread-per-conversation | Medium | Much better multi-user channel experience |
-| 🟡 Medium | 9. File attachments for long output | Small | Cleaner output for verbose responses |
-| 🟡 Medium | 10. Compaction awareness | Small | Robustness for long conversations |
-| 🟠 Lower | 6. Button interactions | Medium | Nice UX but not essential |
-| 🟠 Lower | 7. Model/thinking controls | Medium | Power-user feature |
-| 🟠 Lower | 11. Permissions | Medium | Important for shared guilds |
-| 🟠 Lower | 12. Rich embeds | Medium | Visual polish |
-| 🔵 Ambitious | 13. Session branching/fork | Large | Unique capability, complex UX |
-| 🔵 Ambitious | 14. Discord extensions & custom tools | Large | Gives the agent agency over Discord itself |
+| 🔴 High | 2. Custom system prompt | Small | Big quality-of-life improvement for all responses |
+| 🔴 High | 1. Image input | Small | Unlocks a whole input modality already supported by Pi |
+| 🟡 Medium | 6. Streaming preview improvements | Small | Polish |
+| 🟡 Medium | 3. Thread-per-conversation | Medium | Much better multi-user channel experience |
+| 🟡 Medium | 7. File attachments for long output | Small | Cleaner output for verbose responses |
+| 🟡 Medium | 8. Compaction awareness | Small | Robustness for long conversations |
+| 🟠 Lower | 4. Button interactions | Medium | Nice UX but not essential |
+| 🟠 Lower | 5. Model/thinking controls | Medium | Power-user feature |
+| 🟠 Lower | 9. Permissions | Medium | Important for shared guilds |
+| 🟠 Lower | 10. Rich embeds | Medium | Visual polish |
+| 🔵 Ambitious | 11. Session branching/fork | Large | Unique capability, complex UX |
+| 🔵 Ambitious | 12. Discord extensions & custom tools | Large | Gives the agent agency over Discord itself |
