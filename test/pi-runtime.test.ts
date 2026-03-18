@@ -60,6 +60,25 @@ class FakeSink implements ResponseSink {
   }
 }
 
+class DelayedCreateSink extends FakeSink {
+  createCalls = 0;
+  private releaseCreate: (() => void) | null = null;
+  private readonly createGate = new Promise<void>((resolve) => {
+    this.releaseCreate = resolve;
+  });
+
+  override async createResponseMessage(initialContent: string): Promise<EditableMessage> {
+    this.createCalls += 1;
+    await this.createGate;
+    return super.createResponseMessage(initialContent);
+  }
+
+  release(): void {
+    this.releaseCreate?.();
+    this.releaseCreate = null;
+  }
+}
+
 class FakeSession {
   isStreaming = false;
   sessionFile = "/tmp/fake-session.jsonl";
@@ -217,6 +236,40 @@ describe("Pi conversation runtime queueing", () => {
     expect(sink.createdMessages[0]?.edits.at(-1)).toBe(
       ["Checking the repo", "", "```", "⚙️ read: ./src/pi-runtime.ts → ok", "```", "Done."].join("\n"),
     );
+  });
+
+  it("serializes streaming flushes so finalize does not create a duplicate Discord message", async () => {
+    const session = new FakeSession();
+    const logger = { debug() {}, info() {}, warn() {}, error() {} } as never;
+    const worker = createConversationWorkerForTests(
+      session as never,
+      "channel:guild:channel",
+      logger,
+    );
+
+    const sink = new DelayedCreateSink();
+    await worker.handlePrompt("first", sink);
+
+    session.emit({
+      type: "message_update",
+      assistantMessageEvent: { type: "text_delta", delta: "first response" },
+    });
+
+    await vi.advanceTimersByTimeAsync(600);
+    expect(sink.createCalls).toBe(1);
+    expect(sink.createdMessages).toHaveLength(0);
+
+    session.emit({ type: "agent_end" });
+    await Promise.resolve();
+
+    sink.release();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(sink.createCalls).toBe(1);
+    expect(sink.createdMessages).toHaveLength(1);
+    expect(sink.createdMessages[0]?.edits).toEqual(["first response"]);
+    expect(sink.sentMessages).toEqual([]);
   });
 });
 

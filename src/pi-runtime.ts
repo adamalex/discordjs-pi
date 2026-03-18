@@ -81,6 +81,7 @@ interface ActiveJob extends PendingJob {
   lastPublishedText?: string;
   typingInterval: NodeJS.Timeout | null;
   flushTimer: NodeJS.Timeout | null;
+  publishChain: Promise<void>;
   insideToolBlock: boolean;
   needsSeparator: boolean;
   pendingToolLines: string[];
@@ -523,6 +524,7 @@ class PiConversationWorker implements ConversationRuntime {
       accumulatedText: "",
       flushTimer: null,
       typingInterval,
+      publishChain: Promise.resolve(),
       insideToolBlock: false,
       needsSeparator: false,
       pendingToolLines: [],
@@ -562,21 +564,26 @@ class PiConversationWorker implements ConversationRuntime {
       activeJob.flushTimer = null;
     }
 
-    const nextText = finalize
-      ? splitDiscordMessage(activeJob.accumulatedText)[0]
-      : buildStreamingPreview(activeJob.accumulatedText);
+    const publish = activeJob.publishChain.then(async () => {
+      const nextText = finalize
+        ? splitDiscordMessage(activeJob.accumulatedText)[0]
+        : buildStreamingPreview(activeJob.accumulatedText);
 
-    if (!nextText || nextText === activeJob.lastPublishedText) {
-      return;
-    }
+      if (!nextText || nextText === activeJob.lastPublishedText) {
+        return;
+      }
 
-    if (!activeJob.responseMessage) {
-      activeJob.responseMessage = await activeJob.sink.createResponseMessage(nextText);
+      if (!activeJob.responseMessage) {
+        activeJob.responseMessage = await activeJob.sink.createResponseMessage(nextText);
+      } else {
+        await activeJob.responseMessage.edit(nextText);
+      }
+
       activeJob.lastPublishedText = nextText;
-    } else {
-      await activeJob.responseMessage.edit(nextText);
-      activeJob.lastPublishedText = nextText;
-    }
+    });
+
+    activeJob.publishChain = publish.catch(() => undefined);
+    await publish;
   }
 
   private async finalizeActiveJob(): Promise<void> {
