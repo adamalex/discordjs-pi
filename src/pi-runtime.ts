@@ -47,6 +47,7 @@ interface ActiveJob extends PendingJob {
   flushTimer: NodeJS.Timeout | null;
   insideToolBlock: boolean;
   needsSeparator: boolean;
+  pendingToolLine?: string | undefined;
 }
 
 export interface ConversationRuntime {
@@ -366,6 +367,7 @@ class PiConversationWorker implements ConversationRuntime {
             this.activeJob.insideToolBlock = true;
           }
           const line = formatToolStartLine(event.toolName, event.args);
+          this.activeJob.pendingToolLine = line;
           this.activeJob.accumulatedText += line;
           this.scheduleFlush();
         }
@@ -373,7 +375,20 @@ class PiConversationWorker implements ConversationRuntime {
       case "tool_execution_end":
         if (this.activeJob) {
           const status = event.isError ? "error" : "ok";
-          this.activeJob.accumulatedText += ` → ${status}\n`;
+          // Replace the pending tool line with the completed version (line + result on same line)
+          if (this.activeJob.pendingToolLine) {
+            const completed = `${this.activeJob.pendingToolLine} → ${status}`;
+            const pending = this.activeJob.pendingToolLine;
+            const lastIdx = this.activeJob.accumulatedText.lastIndexOf(pending);
+            if (lastIdx !== -1) {
+              this.activeJob.accumulatedText =
+                this.activeJob.accumulatedText.slice(0, lastIdx) +
+                completed +
+                this.activeJob.accumulatedText.slice(lastIdx + pending.length);
+            }
+            this.activeJob.pendingToolLine = undefined;
+          }
+          this.activeJob.accumulatedText += "\n";
           this.scheduleFlush();
         }
         return;
