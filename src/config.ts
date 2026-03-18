@@ -31,6 +31,9 @@ const envSchema = z
         path: ["ANTHROPIC_API_KEY"],
       });
     }
+
+    // OAuth-backed providers like openai-codex do not require an API key here.
+    // Their credentials come from Pi auth storage (for example ~/.pi/agent/auth.json).
   });
 
 export type LogLevel = (typeof logLevels)[number];

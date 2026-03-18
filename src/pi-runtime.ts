@@ -106,7 +106,10 @@ export async function createPiEnvironment(
   config: AppConfig,
   logger: Logger,
 ): Promise<PiEnvironment> {
-  const authStorage = AuthStorage.inMemory();
+  // Use file-backed auth storage so Pi can read credentials from its standard
+  // auth.json location (for example ~/.pi/agent/auth.json), while still
+  // allowing runtime API key overrides from environment config.
+  const authStorage = AuthStorage.create();
 
   if (config.openAiApiKey) {
     authStorage.setRuntimeApiKey("openai", config.openAiApiKey);
