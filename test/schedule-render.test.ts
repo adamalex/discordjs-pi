@@ -113,7 +113,7 @@ describe("renderSchedule", () => {
     const rendered = renderSchedule(response, { now: NOW });
 
     expect(rendered).toContain("**Open Swim**");
-    expect(rendered).toContain("**Miamisburg Vikings**");
+    expect(rendered).toContain("\n\n**Miamisburg Vikings**\n");
     expect(rendered).toContain("- 5:30 PM · Girls MS Softball at Dixie · Miamisburg High School");
   });
 });

@@ -270,11 +270,16 @@ function renderDayGroup(
     sourceMap.set(item.source, sourceItems);
   }
 
+  let isFirstSource = true;
   for (const [source, items] of sourceMap.entries()) {
+    if (!isFirstSource) {
+      lines.push("");
+    }
     lines.push(`**${source}**`);
     for (const item of items) {
       lines.push(...renderScheduleItem(item, options));
     }
+    isFirstSource = false;
   }
 
   return lines;

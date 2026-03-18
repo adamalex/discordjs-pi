@@ -257,6 +257,15 @@ def is_all_day_event(ev: Dict[str, Any]) -> bool:
     return bool(dtstart) and "T" not in dtstart
 
 
+def normalize_location(location: str) -> str:
+    """Shorten overly verbose venue names for Discord display."""
+    cleaned = str(location).strip()
+    suffix = " at Miamisburg High School"
+    if cleaned.endswith(suffix):
+        return cleaned[: -len(suffix)].strip()
+    return cleaned
+
+
 def build_json_item(ev: Dict[str, Any], team_name: str) -> Dict[str, Any]:
     """Convert a filtered event into the shared schedule JSON shape."""
     info = ev.get("_parsed", {})
@@ -267,7 +276,7 @@ def build_json_item(ev: Dict[str, Any], team_name: str) -> Dict[str, Any]:
         "category": "sports",
         "title": build_title(info),
         "status": "normal",
-        "location": str(ev.get("LOCATION", "")).strip() or None,
+        "location": normalize_location(str(ev.get("LOCATION", ""))) or None,
         "opponent": str(info.get("opponent", "")).strip() or None,
         "homeAway": str(info.get("home_away", "")).strip() or None,
         "tags": build_tags(info),
@@ -307,7 +316,7 @@ def format_events(events: List[Dict[str, Any]], team_name: str) -> str:
             info = ev.get("_parsed", {})
             time_str = format_time(ev.get("_dt"))
             title = build_title(info)
-            location = str(ev.get("LOCATION", "")).strip()
+            location = normalize_location(str(ev.get("LOCATION", "")))
 
             line = "- %s · %s" % (time_str, title)
             if location:
