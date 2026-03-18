@@ -1,24 +1,8 @@
-import type { Message, Attachment } from "discord.js";
+import type { Message, Attachment, ChatInputCommandInteraction } from "discord.js";
 import type { ImageContent } from "@mariozechner/pi-ai";
-
-export type DmCommand = "status" | "reset-all";
 
 export function isDmMessage(message: Message<boolean>): boolean {
   return message.guildId === null;
-}
-
-export function parseDmCommand(content: string): DmCommand | null {
-  const normalized = content.trim().toLowerCase();
-
-  if (normalized === "!status") {
-    return "status";
-  }
-
-  if (normalized === "!reset-all") {
-    return "reset-all";
-  }
-
-  return null;
 }
 
 export function deriveConversationKey(message: Message<boolean>): string {
@@ -31,6 +15,22 @@ export function deriveConversationKey(message: Message<boolean>): string {
   }
 
   return `channel:${message.guildId}:${message.channelId}`;
+}
+
+/**
+ * Derive a conversation key from a slash command interaction.
+ * Uses the same key format as deriveConversationKey for message-based routing.
+ */
+export function deriveInteractionConversationKey(interaction: ChatInputCommandInteraction): string {
+  if (!interaction.guildId) {
+    return `dm:${interaction.channelId}`;
+  }
+
+  if (interaction.channel?.isThread()) {
+    return `thread:${interaction.guildId}:${interaction.channelId}`;
+  }
+
+  return `channel:${interaction.guildId}:${interaction.channelId}`;
 }
 
 export function formatPromptInput(message: Message<boolean>): string {

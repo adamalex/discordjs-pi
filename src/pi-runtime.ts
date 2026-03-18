@@ -147,6 +147,23 @@ export class ConversationRegistry {
     return countFilesByExtension(this.sessionRootDir, ".jsonl");
   }
 
+  async reset(conversationKey: string): Promise<boolean> {
+    const runtime = this.runtimes.get(conversationKey);
+    if (!runtime) {
+      return false;
+    }
+
+    this.runtimes.delete(conversationKey);
+    await runtime.abort();
+    runtime.dispose();
+
+    // Remove the persisted session directory for this conversation
+    const conversationDir = path.join(this.sessionRootDir, encodeConversationKey(conversationKey));
+    await fs.rm(conversationDir, { force: true, recursive: true }).catch(() => undefined);
+
+    return true;
+  }
+
   async resetAll(): Promise<void> {
     const pendingCreates = Array.from(this.creating.values());
     const created = Array.from(this.runtimes.values());

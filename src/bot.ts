@@ -5,6 +5,7 @@ import {
   Events,
   GatewayIntentBits,
   Partials,
+  type ChatInputCommandInteraction,
   type Message,
 } from "discord.js";
 import type { AppConfig } from "./config.js";
@@ -17,11 +18,16 @@ import {
 } from "./pi-runtime.js";
 import {
   deriveConversationKey,
+  deriveInteractionConversationKey,
   extractImages,
   formatPromptInput,
   isDmMessage,
-  parseDmCommand,
 } from "./discord-routing.js";
+import {
+  registerGuildCommands,
+  registerGlobalCommands,
+  HELP_TEXT,
+} from "./commands.js";
 import type { Logger } from "./logger.js";
 
 interface DeployContext {
@@ -119,11 +125,18 @@ export class DiscordPiBot {
     this.client.once(Events.ClientReady, (client) => {
       this.logger.info(`Discord bot connected as ${client.user.tag}`);
       void this.writeHealthFile();
+      void this.registerSlashCommands(client);
       void this.resumeAfterDeploy();
     });
 
     this.client.on(Events.MessageCreate, (message) => {
       void this.handleMessage(message);
+    });
+
+    this.client.on(Events.InteractionCreate, (interaction) => {
+      if (interaction.isChatInputCommand()) {
+        void this.handleSlashCommand(interaction);
+      }
     });
 
     await this.client.login(this.config.discordToken);
@@ -214,21 +227,97 @@ export class DiscordPiBot {
     }
   }
 
+  private async registerSlashCommands(client: Client<true>): Promise<void> {
+    const clientId = client.user.id;
+
+    // Register guild-scoped commands (instant propagation) for all guilds
+    const guildIds = client.guilds.cache.map((g) => g.id);
+    await Promise.all(
+      guildIds.map((guildId) =>
+        registerGuildCommands(clientId, guildId, this.config.discordToken, this.logger),
+      ),
+    );
+
+    // Also register global commands so they work in DMs
+    await registerGlobalCommands(clientId, this.config.discordToken, this.logger);
+  }
+
+  private async handleSlashCommand(interaction: ChatInputCommandInteraction): Promise<void> {
+    try {
+      switch (interaction.commandName) {
+        case "status":
+          await this.handleStatusCommand(interaction);
+          break;
+        case "reset":
+          await this.handleResetCommand(interaction);
+          break;
+        case "reset-all":
+          await this.handleResetAllCommand(interaction);
+          break;
+        case "help":
+          await interaction.reply({ content: HELP_TEXT });
+          break;
+        default:
+          await interaction.reply({ content: `Unknown command: ${interaction.commandName}` });
+      }
+    } catch (error) {
+      this.logger.error("Failed to handle slash command", {
+        command: interaction.commandName,
+        error: error instanceof Error ? error.message : String(error),
+      });
+
+      const reply = { content: "Something went wrong handling that command." };
+      if (interaction.replied || interaction.deferred) {
+        await interaction.followUp(reply).catch(() => undefined);
+      } else {
+        await interaction.reply(reply).catch(() => undefined);
+      }
+    }
+  }
+
+  private async handleStatusCommand(interaction: ChatInputCommandInteraction): Promise<void> {
+    const uptimeSeconds = Math.floor((Date.now() - this.startedAt) / 1000);
+    const persistedSessions = await this.registry.countPersistedSessionFiles();
+
+    await interaction.reply({
+      content: [
+        "**Bot Status**",
+        `⏱️ Uptime: ${formatUptime(uptimeSeconds)}`,
+        `🤖 Model: \`${this.config.botProvider}/${this.config.botModel}\``,
+        `💬 Active conversations: ${this.registry.getActiveRuntimeCount()}`,
+        `💾 Persisted sessions: ${persistedSessions}`,
+      ].join("\n"),
+    });
+  }
+
+  private async handleResetCommand(interaction: ChatInputCommandInteraction): Promise<void> {
+    const conversationKey = deriveInteractionConversationKey(interaction);
+    const wasReset = await this.registry.reset(conversationKey);
+
+    if (wasReset) {
+      await interaction.reply({
+        content: "🔄 Conversation in this channel has been reset.",
+      });
+    } else {
+      await interaction.reply({
+        content: "No active conversation in this channel to reset.",
+      });
+    }
+  }
+
+  private async handleResetAllCommand(interaction: ChatInputCommandInteraction): Promise<void> {
+    await this.registry.resetAll();
+    await interaction.reply({
+      content: "🔄 All conversations and persisted session state have been reset.",
+    });
+  }
+
   private async handleMessage(message: Message<boolean>): Promise<void> {
     if (message.author.bot || message.webhookId) {
       return;
     }
 
     const trimmedContent = message.content.trim();
-
-    if (isDmMessage(message)) {
-      const command = parseDmCommand(trimmedContent);
-      if (command) {
-        await this.handleDmCommand(message, command);
-        return;
-      }
-    }
-
     const images = await extractImages(message);
     const hasImages = images.length > 0;
 
@@ -258,29 +347,6 @@ export class DiscordPiBot {
         .catch(() => undefined);
     }
   }
-
-  private async handleDmCommand(message: Message<boolean>, command: "status" | "reset-all"): Promise<void> {
-    if (command === "status") {
-      const uptimeSeconds = Math.floor((Date.now() - this.startedAt) / 1000);
-      const persistedSessions = await this.registry.countPersistedSessionFiles();
-
-      await getSendableChannel(message).send({
-        content: [
-          "Bot status",
-          `Uptime: ${uptimeSeconds}s`,
-          `Configured model: ${this.config.botProvider}/${this.config.botModel}`,
-          `Active conversation handlers: ${this.registry.getActiveRuntimeCount()}`,
-          `Persisted session files: ${persistedSessions}`,
-        ].join("\n"),
-      });
-      return;
-    }
-
-    await this.registry.resetAll();
-    await getSendableChannel(message).send({
-      content: "All Pi conversations and persisted session state were reset.",
-    });
-  }
 }
 
 function getSendableChannel(message: Message<boolean>): {
@@ -291,6 +357,20 @@ function getSendableChannel(message: Message<boolean>): {
     sendTyping(): Promise<void>;
     send(payload: { content: string }): Promise<Message<true>>;
   };
+}
+
+function formatUptime(totalSeconds: number): string {
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  const parts: string[] = [];
+  if (days > 0) parts.push(`${days}d`);
+  if (hours > 0) parts.push(`${hours}h`);
+  if (minutes > 0) parts.push(`${minutes}m`);
+  parts.push(`${seconds}s`);
+  return parts.join(" ");
 }
 
 /**
