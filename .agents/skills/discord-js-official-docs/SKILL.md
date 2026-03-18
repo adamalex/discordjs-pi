@@ -22,9 +22,10 @@ What was inferred from `TARGET_PROJECT_URL`:
 - official guide surface: `https://discordjs.guide`
 
 What was inferred from this repository:
-- this repository currently has no `package.json`, lockfile, or Discord integration code to pin a local version or a narrower upstream surface
+- this repository now has `package.json`, `package-lock.json`, and live Discord integration code under `src/`
+- `discord.js` is declared in `package.json` as `^14.25.1`, so verify the installed dependency and local type definitions before relying on version-specific behavior
 - the repo name (`discordjs-pi`) and the target URL both point to the main `discord.js` package rather than lower-level `@discordjs/*` packages
-- the most relevant integration mode for future work here is a Node.js Discord bot/client using the main `discord.js` package, especially slash commands, interactions, REST command deployment, buttons/components, and gateway intents
+- the most relevant integration mode here is a Node.js Discord bot/client using the main `discord.js` package, especially slash commands, interactions, REST command deployment, buttons/components, and gateway intents
 
 # When to use this skill
 
@@ -56,7 +57,7 @@ Then:
 5. Do not invent APIs, flags, types, behaviors, lifecycle rules, or configuration keys.
 6. If behavior is ambiguous or time-sensitive, verify against the installed dependency version, local type definitions, and the live official upstream docs.
 
-Because this repository does not currently pin `discord.js`, treat version drift as an explicit risk on every change.
+Because this repository declares `discord.js` as `^14.25.1`, treat version drift between the manifest range, lockfile, installed dependency, and current upstream docs as an explicit risk on every change.
 
 # Bundled Resources Map
 
@@ -91,4 +92,4 @@ When the upstream integration changes materially:
 - refresh the bundled references from the latest official `discord.js` docs, guide, and repository sources
 - update every provenance header with the new retrieval date and any visible release/tag/commit metadata
 - update `sources.md`
-- re-check whether this repository finally pins `discord.js` in a manifest or lockfile, then add an explicit version drift note if needed
+- re-check the declared and installed `discord.js` versions in `package.json` and `package-lock.json`, then update the version drift note if needed

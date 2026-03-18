@@ -109,7 +109,7 @@ Use the broader upstream docs when you need those topics.
 # Refresh Guidance
 
 When upgrading `@mariozechner/pi-coding-agent`:
-- refresh `reference/official/sdk.md` and `reference/examples/*.ts` from the matching upstream tag/commit
+- refresh `reference/official/sdk.md` and the files under `reference/examples/` from the matching upstream tag/commit
 - update provenance headers in each archived file
 - update `sources.md`
 - update the version table above if the pin changes

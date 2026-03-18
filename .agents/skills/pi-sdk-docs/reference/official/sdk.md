@@ -20,7 +20,7 @@ The SDK provides programmatic access to pi's agent capabilities. Use it to embed
 - Build custom tools that spawn sub-agents
 - Test agent behavior programmatically
 
-See [examples/sdk/](../examples/sdk/) for working examples from minimal to full control.
+See the packaged examples in [../examples/](../examples/) for working examples from minimal to full control.
 
 ## Quick Start
 
@@ -328,7 +328,7 @@ If no model is provided:
 2. Uses default from settings
 3. Falls back to first available model
 
-> See [examples/sdk/02-custom-model.ts](../examples/sdk/02-custom-model.ts)
+> See [examples/02-custom-model.ts](../examples/02-custom-model.ts)
 
 ### API Keys and OAuth
 
@@ -368,7 +368,7 @@ const { session } = await createAgentSession({
 const simpleRegistry = new ModelRegistry(authStorage);
 ```
 
-> See [examples/sdk/09-api-keys-and-oauth.ts](../examples/sdk/09-api-keys-and-oauth.ts)
+> See [examples/09-api-keys-and-oauth.ts](../examples/09-api-keys-and-oauth.ts)
 
 ### System Prompt
 
@@ -385,7 +385,7 @@ await loader.reload();
 const { session } = await createAgentSession({ resourceLoader: loader });
 ```
 
-> See [examples/sdk/03-custom-prompt.ts](../examples/sdk/03-custom-prompt.ts)
+> See [examples/03-custom-prompt.ts](../examples/03-custom-prompt.ts)
 
 ### Tools
 
@@ -447,7 +447,7 @@ const { session } = await createAgentSession({
 **When you must use factories:**
 - When you specify both `cwd` (different from `process.cwd()`) AND `tools`
 
-> See [examples/sdk/05-tools.ts](../examples/sdk/05-tools.ts)
+> See [examples/05-tools.ts](../examples/05-tools.ts)
 
 ### Custom Tools
 
@@ -477,7 +477,7 @@ const { session } = await createAgentSession({
 
 Custom tools passed via `customTools` are combined with extension-registered tools. Extensions loaded by the ResourceLoader can also register tools via `pi.registerTool()`.
 
-> See [examples/sdk/05-tools.ts](../examples/sdk/05-tools.ts)
+> See [examples/05-tools.ts](../examples/05-tools.ts)
 
 ### Extensions
 
@@ -501,7 +501,7 @@ await loader.reload();
 const { session } = await createAgentSession({ resourceLoader: loader });
 ```
 
-Extensions can register tools, subscribe to events, add commands, and more. See [extensions.md](extensions.md) for the full API.
+Extensions can register tools, subscribe to events, add commands, and more. The full extension authoring guide is not bundled in this skill; consult the upstream `extensions.md` when you need that API.
 
 **Event Bus:** Extensions can communicate via `pi.events`. Pass a shared `eventBus` to `DefaultResourceLoader` if you need to emit or listen from outside:
 
@@ -517,7 +517,7 @@ await loader.reload();
 eventBus.on("my-extension:status", (data) => console.log(data));
 ```
 
-> See [examples/sdk/06-extensions.ts](../examples/sdk/06-extensions.ts) and [docs/extensions.md](extensions.md)
+> See [examples/06-extensions.ts](../examples/06-extensions.ts). For the full extension authoring API, consult the upstream `extensions.md` (not bundled here).
 
 ### Skills
 
@@ -547,7 +547,7 @@ await loader.reload();
 const { session } = await createAgentSession({ resourceLoader: loader });
 ```
 
-> See [examples/sdk/04-skills.ts](../examples/sdk/04-skills.ts)
+> See [examples/04-skills.ts](../examples/04-skills.ts)
 
 ### Context Files
 
@@ -567,7 +567,7 @@ await loader.reload();
 const { session } = await createAgentSession({ resourceLoader: loader });
 ```
 
-> See [examples/sdk/07-context-files.ts](../examples/sdk/07-context-files.ts)
+> See [examples/07-context-files.ts](../examples/07-context-files.ts)
 
 ### Slash Commands
 
@@ -596,7 +596,7 @@ await loader.reload();
 const { session } = await createAgentSession({ resourceLoader: loader });
 ```
 
-> See [examples/sdk/08-prompt-templates.ts](../examples/sdk/08-prompt-templates.ts)
+> See [examples/08-prompt-templates.ts](../examples/08-prompt-templates.ts)
 
 ### Session Management
 
@@ -669,7 +669,7 @@ sm.branchWithSummary(id, "Summary...");  // Branch with context summary
 sm.createBranchedSession(leafId);       // Extract path to new file
 ```
 
-> See [examples/sdk/11-sessions.ts](../examples/sdk/11-sessions.ts) and [docs/session.md](session.md)
+> See [examples/11-sessions.ts](../examples/11-sessions.ts). For session file format details beyond this SDK summary, consult the upstream `session.md` (not bundled here).
 
 ### Settings Management
 
@@ -720,7 +720,7 @@ Project overrides global. Nested objects merge keys. Setters modify global setti
 - Call `await settingsManager.flush()` when you need a durability boundary (for example, before process exit or before asserting file contents in tests).
 - `SettingsManager` does not print settings I/O errors. Use `settingsManager.drainErrors()` and report them in your app layer.
 
-> See [examples/sdk/10-settings.ts](../examples/sdk/10-settings.ts)
+> See [examples/10-settings.ts](../examples/10-settings.ts)
 
 ## ResourceLoader
 
@@ -905,7 +905,7 @@ const { session } = await createAgentSession({ /* ... */ });
 await runRpcMode(session);  // Reads JSON commands from stdin, writes to stdout
 ```
 
-See [RPC documentation](rpc.md) for the JSON protocol.
+See the upstream `rpc.md` documentation for the JSON protocol (not bundled in this skill).
 
 ## RPC Mode Alternative
 
@@ -915,7 +915,7 @@ For subprocess-based integration without building with the SDK, use the CLI dire
 pi --mode rpc --no-session
 ```
 
-See [RPC documentation](rpc.md) for the JSON protocol.
+See the upstream `rpc.md` documentation for the JSON protocol (not bundled in this skill).
 
 The SDK is preferred when:
 - You want type safety
@@ -972,4 +972,4 @@ type PromptTemplate
 type Tool
 ```
 
-For extension types, see [extensions.md](extensions.md) for the full API.
+For extension types, consult the upstream `extensions.md` (not bundled in this skill) for the full API.
