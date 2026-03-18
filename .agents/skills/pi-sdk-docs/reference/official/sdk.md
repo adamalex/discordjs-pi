@@ -1,6 +1,6 @@
 <!-- Provenance
   Upstream: https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/sdk.md
-  Version:  0.58.4 (latest on npm as of retrieval; no pinned dependency in this repo yet)
+  Version:  0.58.4 (pinned in this repo's package.json)
   Retrieved: 2026-03-17
   Reason:   Primary SDK reference — covers createAgentSession(), AgentSession, events,
             ResourceLoader, tools, extensions, skills, context files, sessions, settings,

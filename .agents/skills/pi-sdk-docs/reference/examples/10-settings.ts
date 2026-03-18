@@ -1,6 +1,6 @@
 // Provenance
 //   Upstream: https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/examples/sdk/10-settings.ts
-//   Version:  0.58.4 (provisional — no pinned dependency in this repo yet)
+//   Version:  0.58.4 (pinned in this repo's package.json)
 //   Retrieved: 2026-03-17
 //   Reason:   SettingsManager — overrides, persistence, flush, in-memory for testing
 
