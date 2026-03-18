@@ -60,6 +60,8 @@ export interface ResponseSink {
 interface SessionLike {
   readonly isStreaming: boolean;
   readonly sessionFile: string | undefined;
+  readonly model: AgentSession["model"];
+  readonly thinkingLevel: AgentSession["thinkingLevel"];
   subscribe(listener: (event: AgentSessionEvent) => void): () => void;
   prompt(text: string, options?: { images?: ImageContent[] }): Promise<void>;
   followUp(text: string, images?: ImageContent[]): Promise<void>;
@@ -91,8 +93,17 @@ interface ActiveJob extends PendingJob {
   pendingToolLines: string[];
 }
 
+export interface SessionConfiguration {
+  model: {
+    provider: string;
+    id: string;
+  } | null;
+  thinkingLevel: AgentSession["thinkingLevel"];
+}
+
 export interface ConversationRuntime {
   readonly sessionFile: string | undefined;
+  getSessionConfiguration(): SessionConfiguration;
   handlePrompt(text: string, sink: ResponseSink, images?: ImageContent[]): Promise<void>;
   abort(): Promise<void>;
   dispose(): void;
@@ -195,6 +206,20 @@ export class ConversationRegistry {
 
   async countPersistedSessionFiles(): Promise<number> {
     return countFilesByExtension(this.sessionRootDir, ".jsonl");
+  }
+
+  async getSessionConfiguration(conversationKey: string): Promise<SessionConfiguration | null> {
+    const existing = this.runtimes.get(conversationKey);
+    if (existing) {
+      return existing.getSessionConfiguration();
+    }
+
+    if (!(await hasPersistedSession(path.join(this.sessionRootDir, encodeConversationKey(conversationKey))))) {
+      return null;
+    }
+
+    const runtime = await this.getOrCreateRuntime(conversationKey);
+    return runtime.getSessionConfiguration();
   }
 
   async reset(conversationKey: string): Promise<boolean> {
@@ -351,6 +376,18 @@ class PiConversationWorker implements ConversationRuntime {
         .then(() => this.handleEvent(event))
         .catch((error) => this.logger.error("Failed to process Pi session event", error));
     });
+  }
+
+  getSessionConfiguration(): SessionConfiguration {
+    return {
+      model: this.session.model
+        ? {
+            provider: this.session.model.provider,
+            id: this.session.model.id,
+          }
+        : null,
+      thinkingLevel: this.session.thinkingLevel,
+    };
   }
 
   async handlePrompt(text: string, sink: ResponseSink, images?: ImageContent[]): Promise<void> {
@@ -684,6 +721,10 @@ async function countFilesByExtension(dirPath: string, extension: string): Promis
   }
 
   return total;
+}
+
+async function hasPersistedSession(dirPath: string): Promise<boolean> {
+  return (await countFilesByExtension(dirPath, ".jsonl")) > 0;
 }
 
 /**

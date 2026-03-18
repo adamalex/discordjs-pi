@@ -14,6 +14,10 @@ export const statusCommand = new SlashCommandBuilder()
   .setName("status")
   .setDescription("Show bot uptime, model info, and active sessions");
 
+export const modelCommand = new SlashCommandBuilder()
+  .setName("model")
+  .setDescription("Show the current model and thinking level for this session");
+
 export const resetCommand = new SlashCommandBuilder()
   .setName("reset")
   .setDescription("Reset the conversation in this channel/DM");
@@ -27,7 +31,7 @@ export const helpCommand = new SlashCommandBuilder()
   .setName("help")
   .setDescription("Show what this bot can do");
 
-export const allCommands = [statusCommand, resetCommand, resetAllCommand, helpCommand];
+export const allCommands = [statusCommand, modelCommand, resetCommand, resetAllCommand, helpCommand];
 
 /**
  * Clear all guild-scoped slash commands (to remove duplicates with global commands).
@@ -84,6 +88,7 @@ export const HELP_TEXT = [
   "",
   "**Commands:**",
   "• `/status` — Bot uptime, model info, active sessions",
+  "• `/model` — Current model + thinking level for this session",
   "• `/reset` — Reset the conversation in this channel/DM",
   "• `/reset-all` — Reset all conversations (admin only)",
   "• `/help` — Show this message",

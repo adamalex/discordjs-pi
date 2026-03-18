@@ -10,6 +10,7 @@ import {
   type EditableMessage,
   type FileAttachment,
   type ResponseSink,
+  type SessionConfiguration,
 } from "../src/pi-runtime.js";
 
 interface SessionEvent {
@@ -82,6 +83,8 @@ class DelayedCreateSink extends FakeSink {
 class FakeSession {
   isStreaming = false;
   sessionFile = "/tmp/fake-session.jsonl";
+  model = { provider: "openai-codex", id: "gpt-5.4" };
+  thinkingLevel = "medium" as const;
   readonly promptCalls: string[] = [];
   readonly followUpCalls: string[] = [];
   private readonly listeners = new Set<(event: SessionEvent) => void>();
@@ -126,6 +129,10 @@ describe("ConversationRegistry", () => {
 
     const runtime: ConversationRuntime = {
       sessionFile: undefined,
+      getSessionConfiguration: () => ({
+        model: { provider: "openai-codex", id: "gpt-5.4" },
+        thinkingLevel: "medium",
+      }),
       handlePrompt: vi.fn(async () => undefined),
       abort,
       dispose,
@@ -146,6 +153,54 @@ describe("ConversationRegistry", () => {
     expect(abort).toHaveBeenCalledTimes(1);
     expect(dispose).toHaveBeenCalledTimes(1);
     expect(registry.getActiveRuntimeCount()).toBe(0);
+  });
+
+  it("returns the active runtime session configuration", async () => {
+    const config: SessionConfiguration = {
+      model: { provider: "openai-codex", id: "gpt-5.4" },
+      thinkingLevel: "medium",
+    };
+
+    const runtime: ConversationRuntime = {
+      sessionFile: undefined,
+      getSessionConfiguration: () => config,
+      handlePrompt: vi.fn(async () => undefined),
+      abort: vi.fn(async () => undefined),
+      dispose: vi.fn(() => undefined),
+    };
+
+    const registry = new ConversationRegistry(
+      "/tmp/discordjs-pi-registry-state-test",
+      async () => runtime,
+      { debug() {}, info() {}, warn() {}, error() {} } as never,
+    );
+
+    await registry.initialize();
+    await registry.handlePrompt("key", "hello", new FakeSink());
+
+    await expect(registry.getSessionConfiguration("key")).resolves.toEqual(config);
+  });
+
+  it("does not create a runtime when no persisted session exists", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "discordjs-pi-registry-empty-"));
+    const createRuntime = vi.fn(async (): Promise<ConversationRuntime> => ({
+      sessionFile: undefined,
+      getSessionConfiguration: () => ({ model: null, thinkingLevel: "off" }),
+      handlePrompt: vi.fn(async () => undefined),
+      abort: vi.fn(async () => undefined),
+      dispose: vi.fn(() => undefined),
+    }));
+
+    const registry = new ConversationRegistry(
+      root,
+      createRuntime,
+      { debug() {}, info() {}, warn() {}, error() {} } as never,
+    );
+
+    await registry.initialize();
+
+    await expect(registry.getSessionConfiguration("missing")).resolves.toBeNull();
+    expect(createRuntime).not.toHaveBeenCalled();
   });
 });
 

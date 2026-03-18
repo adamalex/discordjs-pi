@@ -258,6 +258,9 @@ export class DiscordPiBot {
         case "status":
           await this.handleStatusCommand(interaction);
           break;
+        case "model":
+          await this.handleModelCommand(interaction);
+          break;
         case "reset":
           await this.handleResetCommand(interaction);
           break;
@@ -297,6 +300,32 @@ export class DiscordPiBot {
         `💬 Active conversations: ${this.registry.getActiveRuntimeCount()}`,
         `💾 Persisted sessions: ${persistedSessions}`,
       ].join("\n"),
+    });
+  }
+
+  private async handleModelCommand(interaction: ChatInputCommandInteraction): Promise<void> {
+    const conversationKey = deriveInteractionConversationKey(interaction);
+    const configuration = await this.registry.getSessionConfiguration(conversationKey);
+
+    if (!configuration) {
+      await interaction.reply({
+        content: "No session exists in this channel yet. Send a message first.",
+        ephemeral: true,
+      });
+      return;
+    }
+
+    const modelText = configuration.model
+      ? `\`${configuration.model.provider}/${configuration.model.id}\``
+      : "_none_";
+
+    await interaction.reply({
+      content: [
+        "**Session Model Settings**",
+        `🤖 Model: ${modelText}`,
+        `🧠 Thinking: \`${configuration.thinkingLevel}\``,
+      ].join("\n"),
+      ephemeral: true,
     });
   }
 
