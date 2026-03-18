@@ -46,6 +46,7 @@ interface ActiveJob extends PendingJob {
   typingInterval: NodeJS.Timeout | null;
   flushTimer: NodeJS.Timeout | null;
   insideToolBlock: boolean;
+  needsSeparator: boolean;
 }
 
 export interface ConversationRuntime {
@@ -326,13 +327,11 @@ class PiConversationWorker implements ConversationRuntime {
       case "message_start":
         await this.ensureActiveJob();
         if (this.activeJob) {
-          // Close any open tool block before new assistant text starts.
-          this.closeToolBlock();
-          // When a new assistant message starts and we already have accumulated text
-          // (i.e., after tool calls), insert a line break. Discord already renders
-          // visual spacing after code blocks, so a single newline is sufficient.
+          // Mark that a separator is needed before the next text delta.
+          // We don't close the tool block here because subsequent tool calls
+          // should merge into the same code fence.
           if (this.activeJob.accumulatedText.length > 0) {
-            this.activeJob.accumulatedText = this.activeJob.accumulatedText.trimEnd() + "\n";
+            this.activeJob.needsSeparator = true;
           }
         }
         return;
@@ -343,6 +342,12 @@ class PiConversationWorker implements ConversationRuntime {
           event.assistantMessageEvent.type === "text_delta" &&
           event.assistantMessageEvent.delta
         ) {
+          // Close any open tool block now that real text is arriving.
+          if (this.activeJob.needsSeparator) {
+            this.closeToolBlock();
+            this.activeJob.accumulatedText = this.activeJob.accumulatedText.trimEnd() + "\n";
+            this.activeJob.needsSeparator = false;
+          }
           this.activeJob.accumulatedText += event.assistantMessageEvent.delta;
           this.scheduleFlush();
         }
@@ -350,6 +355,8 @@ class PiConversationWorker implements ConversationRuntime {
       case "tool_execution_start":
         await this.ensureActiveJob();
         if (this.activeJob) {
+          // Clear separator flag — consecutive tools merge into one code fence.
+          this.activeJob.needsSeparator = false;
           if (!this.activeJob.insideToolBlock) {
             // Open a new fenced code block for tool calls.
             if (this.activeJob.accumulatedText.length > 0) {
@@ -412,6 +419,7 @@ class PiConversationWorker implements ConversationRuntime {
       flushTimer: null,
       typingInterval,
       insideToolBlock: false,
+      needsSeparator: false,
     };
   }
 
